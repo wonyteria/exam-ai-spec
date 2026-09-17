@@ -1,0 +1,1 @@
+{"number": "15", "type": "multiple_choice", "points": 5, "body": "평행사변형 ABCD에서 점 M은 AD의 중점이고, 점 O가 AC와 BD의 교점이라 할 때, 직사각형이 되기 위한 조건으로 옳지 않은 것은?", "choices": {"①": "AC = BD", "②": "AC ⊥ BD", "③": "OA = OB", "④": "MB = MC", "⑤": "∠D = 90°"}, "equations": [], "figure": "평행사변형 ABCD가 그려져 있고, 대각선 AC와 BD가 점 O에서 만난다. 변 AD의 중점 M이 표시되어 있다."}

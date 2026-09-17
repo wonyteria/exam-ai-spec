@@ -1,0 +1,1 @@
+{"number": "2-2", "type": "descriptive", "points": 2, "body": "∠CRQ : ∠ARP = 3:2일 때, ∠PRQ의 크기를 이용하여 ∠CRQ의 크기를 구하고, 그 과정을 서술하시오.", "choices": {}, "equations": [], "figure": null}

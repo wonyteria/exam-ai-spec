@@ -1,0 +1,1 @@
+{"solved": true, "answer": "③", "steps": ["평행사변형 ABCD에서 대각선 AC의 중점을 M이라 하면, EF는 AC의 수직이등분선이므로 M을 지나고 AC에 수직이다.", "삼각형 ABC에서 EF가 AC의 수직이등분선이고 AB // EF이므로, EF는 삼각형 ABC의 변 BC의 수직이등분선이 된다.", "따라서 E는 BC의 중점이다.", "BC의 길이가 14cm이므로, CE의 길이는 BC의 절반인 7cm이다."], "reason": null}

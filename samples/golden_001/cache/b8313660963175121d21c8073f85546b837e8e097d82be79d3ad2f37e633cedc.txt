@@ -1,0 +1,1 @@
+{"solved": true, "answer": "ASA 합동", "steps": ["AD//BF이므로 ∠ADE=∠FCE(엇각)", "DE=CE(E는 CD의 중점)", "∠AED=∠FEC(맞꼭지각) → ASA 합동"], "reason": null}

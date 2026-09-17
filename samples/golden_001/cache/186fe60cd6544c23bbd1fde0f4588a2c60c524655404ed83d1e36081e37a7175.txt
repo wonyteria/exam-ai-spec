@@ -1,0 +1,1 @@
+{"solved": true, "answer": "평행사변형", "steps": ["△AED≡△FEC에서 AD=CF, AD//CF이므로 평행사변형"], "reason": null}

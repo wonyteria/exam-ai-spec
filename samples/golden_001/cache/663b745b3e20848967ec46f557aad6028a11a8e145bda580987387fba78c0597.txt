@@ -1,0 +1,1 @@
+{"number": "4", "type": "multiple_choice", "points": 4, "body": "직각삼각형의 합동 조건에 대한 설명으로 옳은 것만을 <보기>에서 있는 대로 고른 것은?", "choices": {"①": "ㄱ", "②": "ㄴ", "③": "ㄷ", "④": "ㄱ, ㄷ", "⑤": "ㄴ, ㄷ"}, "equations": [], "figure": null}

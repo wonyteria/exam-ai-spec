@@ -64,14 +64,32 @@ GEMINI_CACHE=1                              # 응답 디스크 캐시 (0=끔)
 - 완료된 문서로 캐시를 역산 시딩 가능:
 
 ```bash
-./.venv/Scripts/python scripts/seed_gemini_cache.py <document_id>
+./.venv/Scripts/python scripts/seed_gemini_cache.py <document_id> \
+    --overrides ../samples/golden_001/overrides.json \
+    --images-from <job_id>   # trace_removed 변형 기준으로 재시딩할 때
 ```
+
+### Golden Sample 재생 (회귀 테스트)
+
+`samples/golden_001/` — 실제 학생 시험지 5페이지:
+
+- `page1-5.jpg` 원본 이미지
+- `expected.json` — 문항/선택지/정답 기대값 (사람 검증 포함)
+- `overrides.json` — 모델 추출 실패분에 대한 사람 확정값
+- `cache/` — provider 응답 fixture (오프라인 결정적 재생)
+
+`pytest tests/test_golden_replay.py`가 캐시 fixture로 전체 파이프라인을
+돌려 `VERIFIED_FINAL` + 문항 내용을 expected와 비교한다. 캐시 미스는
+실제 API로 나가므로 즉시 실패 → fixture 드리프트 감지.
+
+## 현재 상태 (수직 슬라이스 골격)
 
 ## 현재 상태 (수직 슬라이스 골격)
 
 - 실제 시험지 5페이지로 E2E 동작 확인: 29문항 영역 분리, 1–20번 선택지/도형/풀이 추출,
-  논술형 소문항 라벨(논술형 2, 2-1…) 보존, 읽기 순서 정렬
+  논술형 소문항 라벨(논술형 2, 2-1…) 보존 + 공통 지문 링크, 읽기 순서 정렬,
+  학생 필기 분리(연필/색상 잉크) 실동작, 골든 재생 VERIFIED_FINAL
 - `number` = 안정적 위치 인덱스, `label` = 인쇄된 표기 (덮어쓰기/중복 없음)
-- 미해결: 학생 필기 분리 실구현, 일부 문항 선택지 누락(7, 13번), 논술형 공통 지문,
-  HWP 실변환(한컴 필요), golden expected.json 사람 확정
+- 미해결: 진한 필기·인쇄물 융합 자국은 보수적 마스크로 남김(ML 분리기 필요),
+  HWP 실변환(한컴 필요), 무료 쿼터 환경의 요청 예산 관리
 - HWP 변환은 Windows + pywin32 + 한컴 설치 환경에서만 동작 (renderers/hwp/worker.py)

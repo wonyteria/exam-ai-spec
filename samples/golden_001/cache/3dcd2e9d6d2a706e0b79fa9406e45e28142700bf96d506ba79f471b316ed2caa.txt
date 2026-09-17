@@ -1,0 +1,1 @@
+{"number": "20", "type": "multiple_choice", "points": 5, "body": "평행사변형 ABCD의 AB의 중점 E에서 AC와 평행한 직선을 그어 BC와 만나는 점을 F라 하자. ΔAEC의 넓이와 다른 삼각형은?", "choices": {"①": "ΔAED", "②": "ΔAFC", "③": "ΔBCE", "④": "ΔCDF", "⑤": "ΔEFD"}, "equations": [], "figure": "평행사변형 ABCD에서 AB의 중점 E를 지나고 대각선 AC와 평행한 직선이 BC와 만나는 점을 F라고 한다. 삼각형 AEC가 색칠되어 있다."}

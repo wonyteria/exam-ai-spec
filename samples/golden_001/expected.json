@@ -1,0 +1,445 @@
+{
+  "source": "golden_001 (실제 학생 시험지 5페이지)",
+  "expected_status": "VERIFIED_FINAL",
+  "questions": [
+    {
+      "number": 1,
+      "label": "1",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "$\\triangle ABC$에서 $\\overline{AB} = \\overline{AC}$, $\\angle A = 40^{\\circ}$일 때, $\\angle ACB$의 크기는?",
+      "choices": {
+        "①": "55^{\\circ}",
+        "②": "60^{\\circ}",
+        "③": "65^{\\circ}",
+        "④": "70^{\\circ}",
+        "⑤": "75^{\\circ}"
+      },
+      "figure": "삼각형 ABC에서 변 AB와 변 AC의 길이가 같은 이등변삼각형이며, 꼭짓점 A의 각도가 40도이다.",
+      "answer": "④"
+    },
+    {
+      "number": 2,
+      "label": "2",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "$\\triangle ABC$에서 $\\overline{BD}=\\overline{CD}$, $\\overline{AB}=12\\text{cm}$, $\\angle CAD=50^{\\circ}$일 때, $x$, $y$의 값으로 각각 옳은 것은? (단, $x$, $y$는 상수)",
+      "choices": {
+        "①": "35, 12",
+        "②": "40, 10",
+        "③": "40, 12",
+        "④": "50, 10",
+        "⑤": "50, 12"
+      },
+      "figure": "삼각형 ABC에서 선분 AD는 밑변 BC에 수직이며, D는 BC의 중점입니다. 각 BAD와 각 CAD는 모두 50도입니다. 선분 AB의 길이는 12cm이고, 선분 AC의 길이는 ycm입니다. 각 ABD는 x도입니다.",
+      "answer": "⑤"
+    },
+    {
+      "number": 3,
+      "label": "3",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "□ABCD에서 $\\overline{AE} = \\overline{BE}$이고, $\\overline{AD} = 12\\text{cm}$, $\\overline{BC} = 10\\text{cm}$일 때, $\\overline{DC}$의 길이는?",
+      "choices": {
+        "①": "20",
+        "②": "21",
+        "③": "22",
+        "④": "23",
+        "⑤": "24"
+      },
+      "figure": "A quadrilateral ABCD where AD is perpendicular to DC and BC is perpendicular to DC. Point E lies on the segment DC. The length of AD is 12cm and the length of BC is 10cm. AE equals BE.",
+      "answer": "③"
+    },
+    {
+      "number": 4,
+      "label": "4",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "직각삼각형의 합동 조건에 대한 설명으로 옳은 것만을 <보기>에서 있는 대로 고른 것은?",
+      "choices": {
+        "①": "ㄱ",
+        "②": "ㄴ",
+        "③": "ㄷ",
+        "④": "ㄱ, ㄷ",
+        "⑤": "ㄴ, ㄷ"
+      },
+      "figure": null,
+      "answer": "④"
+    },
+    {
+      "number": 5,
+      "label": "5",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "삼각형의 세 변의 길이를 나타낸 것 중, 직각삼각형이 될 수 없는 것은?",
+      "choices": {
+        "①": "3cm, 4cm, 5cm",
+        "②": "6cm, 8cm, 10cm",
+        "③": "5cm, 12cm, 13cm",
+        "④": "8cm, 15cm, 17cm",
+        "⑤": "9cm, 10cm, 15cm"
+      },
+      "figure": null,
+      "answer": "⑤"
+    },
+    {
+      "number": 6,
+      "label": "6",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "$\\angle C = 90^{\\circ}$인 직각삼각형 ABC에서 $\\overline{AB} \\perp \\overline{DE}$이고, $\\overline{ED}=\\overline{CD}$, $\\overline{AE}=8\\text{cm}$, $\\overline{CD}=6\\text{cm}$일 때, $x+y$의 값은?",
+      "choices": {
+        "①": "18",
+        "②": "19",
+        "③": "20",
+        "④": "21",
+        "⑤": "22"
+      },
+      "figure": "직각삼각형 ABC에서 C가 직각이다. 빗변 AB 위에 점 E가 있고, 밑변 BC 위에 점 D가 있다. 선분 DE는 AB와 수직이다. ED = CD = 6cm, AE = 8cm이다. AD의 길이는 ycm, AC의 길이는 xcm로 표시되어 있다.",
+      "answer": "①"
+    },
+    {
+      "number": 7,
+      "label": "7",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "삼각형의 내심과 외심에 대한 설명 중 옳지 않은 것은?",
+      "choices": {
+        "①": "직각삼각형의 외심은 삼각형 외부에 있다",
+        "②": "내심에서 세 변에 이르는 거리는 모두 같다",
+        "③": "내심은 세 내각의 이등분선이 만나는 점이다",
+        "④": "외심은 세 변의 수직이등분선이 만나는 점이다",
+        "⑤": "외심에서 세 꼭짓점에 이르는 거리는 모두 같다"
+      },
+      "figure": null,
+      "answer": "①"
+    },
+    {
+      "number": 8,
+      "label": "8",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "점 I는 $\\triangle ABC$의 내심이고, $\\overline{DE}$는 점 I를 지나며 $\\overline{BC}$에 평행한 직선이다. $\\overline{AD}=13\\text{cm}$, $\\overline{AE}=11\\text{cm}$, $\\overline{DE}=15\\text{cm}$일 때, $\\overline{AB}+\\overline{AC}$의 값은?",
+      "choices": {
+        "①": "33",
+        "②": "35",
+        "③": "37",
+        "④": "39",
+        "⑤": "41"
+      },
+      "figure": "삼각형 ABC의 내심 I를 지나는 선분 DE가 변 BC와 평행하다. 선분 AD=13cm, AE=11cm, DE=15cm이다. DE는 DI와 IE로 나뉘며, DI=DB, IE=EC의 관계가 성립한다.",
+      "answer": "①"
+    },
+    {
+      "number": 9,
+      "label": "9",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "점 O가 $\\triangle ABC$의 외심일 때, $x$의 값은?",
+      "choices": {
+        "①": "100",
+        "②": "105",
+        "③": "110",
+        "④": "115",
+        "⑤": "120"
+      },
+      "figure": "삼각형 ABC가 있고, 점 O는 삼각형의 외심입니다. 각 A의 크기는 50도입니다. 점 O를 중심으로 하는 각 BOC의 크기가 x도입니다.",
+      "answer": "②"
+    },
+    {
+      "number": 10,
+      "label": "10",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "AB = AC인 이등변삼각형 ABC의 꼭짓점 A에서 BC에 내린 수선 위의 두 점 I와 O는 각각 ΔABC의 내심과 외심이다. AB = 40cm, BC = 48cm이고, ΔABC의 외접원의 반지름이 25cm일 때, IO의 길이는?",
+      "choices": {
+        "①": "1",
+        "②": "2",
+        "③": "3",
+        "④": "4",
+        "⑤": "5"
+      },
+      "figure": "이등변삼각형 ABC에서 A에서 BC로 내린 수선의 발을 M이라 할 때, 점 I(내심)와 점 O(외심)는 선분 AM 위에 위치한다. AB=40cm, BC=48cm이며, 외접원의 반지름은 25cm이다.",
+      "answer": "①"
+    },
+    {
+      "number": 11,
+      "label": "11",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "평행사변형 ABCD에서 ∠C와 ∠D의 비율이 5:7이다. ∠A=x°, ∠B=y°일 때, x-y의 값은?",
+      "choices": {
+        "①": "-35",
+        "②": "-30",
+        "③": "-25",
+        "④": "25",
+        "⑤": "30"
+      },
+      "figure": "평행사변형 ABCD에서 인접한 두 각인 ∠C와 ∠D의 합은 180°이며, ∠A=∠C, ∠B=∠D라는 성질을 이용해야 함.",
+      "answer": "②"
+    },
+    {
+      "number": 12,
+      "label": "12",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "평행사변형 ABCD에서 $\\angle D = 60^{\\circ}$ 이고 $\\overline{AD} = 14\\text{cm}$, $\\overline{CD} = 6\\text{cm}$, $\\overline{AB} = \\overline{AE}$ 일 때, $x$의 값은?",
+      "choices": {
+        "①": "7",
+        "②": "8",
+        "③": "9",
+        "④": "10",
+        "⑤": "11"
+      },
+      "figure": "평행사변형 ABCD에서 AD와 BC는 평행하며 AD=14cm, CD=6cm이다. 점 E는 변 BC 위에 위치하며, AB=AE인 이등변삼각형 ABE가 형성되어 있다. x는 선분 EC의 길이를 나타낸다.",
+      "answer": "②"
+    },
+    {
+      "number": 13,
+      "label": "13",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "□ABCD가 평행사변형이 되는 조건으로 옳은 것은? (단, 점 O는 두 대각선의 교점)",
+      "choices": {
+        "①": "OA=OB, OC=OD",
+        "②": "AD//BC, AB=BC",
+        "③": "AB=DC, AC⊥BD",
+        "④": "∠A=108°, ∠B=72°",
+        "⑤": "AB//DC, ∠DAC=∠BCA"
+      },
+      "figure": "사각형 ABCD와 두 대각선 AC, BD의 교점 O가 표시된 도형",
+      "answer": "⑤"
+    },
+    {
+      "number": 14,
+      "label": "14",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "평행사변형 ABCD에서 $\\overline{CD}$의 중점을 E, 꼭짓점 A에서 $\\overline{BE}$에 내린 수선의 발을 F, $\\overline{BE}$의 연장선과 $\\overline{AD}$의 연장선이 만나는 점을 G라 하자. $\\angle ABF = 53^{\\circ}$, $\\angle EBC = 25^{\\circ}$일 때, $\\angle FDE$의 크기는?",
+      "choices": {
+        "①": "20^{\\circ}",
+        "②": "22^{\\circ}",
+        "③": "24^{\\circ}",
+        "④": "26^{\\circ}",
+        "⑤": "28^{\\circ}"
+      },
+      "figure": "평행사변형 ABCD에서 E는 CD의 중점이다. A에서 BE에 내린 수선의 발은 F이다. BE의 연장선과 AD의 연장선이 만나는 점은 G이다. 각 ABF는 53도, 각 EBC는 25도이다.",
+      "answer": "②"
+    },
+    {
+      "number": 15,
+      "label": "15",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "평행사변형 ABCD에서 점 M은 AD의 중점이고, 점 O가 AC와 BD의 교점이라 할 때, 직사각형이 되기 위한 조건으로 옳지 않은 것은?",
+      "choices": {
+        "①": "AC = BD",
+        "②": "AC ⊥ BD",
+        "③": "OA = OB",
+        "④": "MB = MC",
+        "⑤": "∠D = 90°"
+      },
+      "figure": "평행사변형 ABCD가 그려져 있고, 대각선 AC와 BD가 점 O에서 만난다. 변 AD의 중점 M이 표시되어 있다.",
+      "answer": "②"
+    },
+    {
+      "number": 16,
+      "label": "16",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "평행사변형 ABCD에서 $\\overline{EF}$는 $\\overline{AC}$의 수직이등분선이다. $\\overline{AB} // \\overline{EF}$, $\\overline{BC}=14\\text{cm}$, $\\overline{CD}=8\\text{cm}$일 때, $\\overline{CE}$의 길이는?",
+      "choices": {
+        "①": "5",
+        "②": "6",
+        "③": "7",
+        "④": "8",
+        "⑤": "9"
+      },
+      "figure": "평행사변형 ABCD에서 대각선 AC가 있고, 선분 EF가 AC를 수직이등분한다. AB와 EF는 평행하다. BC의 길이는 14cm, CD의 길이는 8cm이다.",
+      "answer": "③"
+    },
+    {
+      "number": 17,
+      "label": "17",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "마름모 ABCD의 꼭짓점 A에서 BD와 CD에 내린 수선의 발을 각각 O, E라 하고, AE와 BD의 교점을 F라고 하자. ∠FAO = 24°일 때, ∠BCD의 크기는?",
+      "choices": {
+        "①": "130°",
+        "②": "132°",
+        "③": "134°",
+        "④": "136°",
+        "⑤": "138°"
+      },
+      "figure": "마름모 ABCD에서 대각선 BD와 선분 AO가 수직으로 만나는 점 O가 있고, 점 A에서 변 CD에 내린 수선의 발 E가 있다. 선분 AE와 대각선 BD가 만나는 점은 F이다. ∠FAO = 24°이다.",
+      "answer": "②"
+    },
+    {
+      "number": 18,
+      "label": "18",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 3,
+      "body": "□ABCD는 정사각형이고, 두 대각선의 교점을 O라 하자. $\\overline{AO}=7\\text{cm}$일 때, 사각형의 넓이($\\text{cm}^2$)는?",
+      "choices": {
+        "①": "63",
+        "②": "72",
+        "③": "81",
+        "④": "98",
+        "⑤": "104"
+      },
+      "figure": "정사각형 ABCD와 그 대각선의 교점 O가 표시되어 있으며, 대각선 AO의 길이가 7cm로 주어짐.",
+      "answer": "④"
+    },
+    {
+      "number": 19,
+      "label": "19",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "여러 가지 사각형 중 그 성질에 옳게 연결된 것은?",
+      "choices": {
+        "①": "마름모 - 이웃한 두 각의 크기가 같다.",
+        "②": "직사각형 - 두 대각선이 서로 수직이다.",
+        "③": "평행사변형 - 두 대각선의 길이가 같다.",
+        "④": "사다리꼴 - 두 쌍의 대변이 각각 평행하다.",
+        "⑤": "정사각형 - 두 쌍의 대각의 크기가 각각 같다."
+      },
+      "figure": null,
+      "answer": "⑤"
+    },
+    {
+      "number": 20,
+      "label": "20",
+      "parent_label": null,
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "평행사변형 ABCD의 AB의 중점 E에서 AC와 평행한 직선을 그어 BC와 만나는 점을 F라 하자. ΔAEC의 넓이와 다른 삼각형은?",
+      "choices": {
+        "①": "ΔAED",
+        "②": "ΔAFC",
+        "③": "ΔBCE",
+        "④": "ΔCDF",
+        "⑤": "ΔEFD"
+      },
+      "figure": "평행사변형 ABCD에서 AB의 중점 E를 지나고 대각선 AC와 평행한 직선이 BC와 만나는 점을 F라고 한다. 삼각형 AEC가 색칠되어 있다.",
+      "answer": "①"
+    },
+    {
+      "number": 21,
+      "label": "논술형 1",
+      "parent_label": null,
+      "type": "descriptive",
+      "points": 6,
+      "body": "△ABC에서 BC의 중점을 M이라 하고, 점 M에서 AB, AC에 내린 수선의 발을 각각 D, E라고 하자. DM=EM이고, ∠DMB=38°일 때, ∠BAC를 구하려고 한다. 다음 물음에 답하시오.\n1-1. 두 삼각형 △MBD와 △MCE가 합동임을 설명하여, ∠DMB=∠EMC임을 밝히시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.) [4점]\n1-2. ∠DMB=∠EMC임을 이용하여 ∠BAC의 크기를 구하고, 그 과정을 서술하시오. [2점]",
+      "choices": null,
+      "figure": "삼각형 ABC에서 BC의 중점 M, M에서 AB와 AC에 내린 수선의 발 D와 E(직각 표시), ∠DMB=38° 표시된 도형",
+      "answer": "∠BAC = 76°"
+    },
+    {
+      "number": 22,
+      "label": "논술형 2",
+      "parent_label": null,
+      "type": "descriptive",
+      "points": 7,
+      "body": "원 I는 직각삼각형 ABC의 내접원이고 점 P, Q, R은 원 I의 접점일 때, ∠RCQ의 크기를 구하려고 한다. 다음 물음에 답하시오.",
+      "choices": null,
+      "figure": "직각삼각형 ABC의 내접원 I와 세 접점 P, Q, R이 표시된 도형",
+      "answer": null
+    },
+    {
+      "number": 23,
+      "label": "2-1",
+      "parent_label": "논술형 2",
+      "type": "descriptive",
+      "points": 3,
+      "body": "원 I의 접점을 연결한 △PQR의 한 내각인 ∠PRQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": null,
+      "figure": null,
+      "answer": "45°"
+    },
+    {
+      "number": 24,
+      "label": "2-2",
+      "parent_label": "논술형 2",
+      "type": "descriptive",
+      "points": 2,
+      "body": "∠CRQ : ∠ARP = 3:2일 때, ∠PRQ의 크기를 이용하여 ∠CRQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": null,
+      "figure": null,
+      "answer": "81°"
+    },
+    {
+      "number": 25,
+      "label": "2-3",
+      "parent_label": "논술형 2",
+      "type": "descriptive",
+      "points": 2,
+      "body": "∠CRQ의 크기를 이용하여 ∠RCQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": null,
+      "figure": null,
+      "answer": "18°"
+    },
+    {
+      "number": 26,
+      "label": "논술형 3",
+      "parent_label": null,
+      "type": "descriptive",
+      "points": 7,
+      "body": "평행사변형 ABCD에서 점 E는 CD의 중점이고, AE의 연장선과 BC의 연장선이 만나는 점을 F라고 하자. 다음 물음에 답하시오.",
+      "choices": null,
+      "figure": "평행사변형 ABCD, CD의 중점 E, AE의 연장선과 BC의 연장선의 교점 F가 표시된 도형",
+      "answer": null
+    },
+    {
+      "number": 27,
+      "label": "3-1",
+      "parent_label": "논술형 3",
+      "type": "descriptive",
+      "points": 3,
+      "body": "△AED와 △FEC가 합동임을 설명하시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.)",
+      "choices": null,
+      "figure": null,
+      "answer": "ASA 합동"
+    },
+    {
+      "number": 28,
+      "label": "3-2",
+      "parent_label": "논술형 3",
+      "type": "descriptive",
+      "points": 2,
+      "body": "위 그림에서 AC와 DF를 그어 □ACFD를 만들 때, 사각형은 어떤 사각형인지 쓰시오.",
+      "choices": null,
+      "figure": null,
+      "answer": "평행사변형"
+    },
+    {
+      "number": 29,
+      "label": "3-3",
+      "parent_label": "논술형 3",
+      "type": "descriptive",
+      "points": 2,
+      "body": "3-2에서 답한 사각형인 이유를 서술하시오.",
+      "choices": null,
+      "figure": null,
+      "answer": "한 쌍의 대변 AD와 CF가 평행하고 길이가 같으므로 평행사변형"
+    }
+  ]
+}

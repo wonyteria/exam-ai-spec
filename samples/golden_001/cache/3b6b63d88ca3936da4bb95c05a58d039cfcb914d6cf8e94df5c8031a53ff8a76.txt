@@ -1,0 +1,1 @@
+{"solved": true, "answer": "45°", "steps": ["접점에서의 각: ∠PRQ = 90° - ∠B/2 (접선과 현이 이루는 각의 성질)", "∠B=90°이므로 ∠PRQ=45°"], "reason": null}

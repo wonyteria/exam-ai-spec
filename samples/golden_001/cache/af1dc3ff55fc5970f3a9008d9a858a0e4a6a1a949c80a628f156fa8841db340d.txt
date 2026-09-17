@@ -1,0 +1,1 @@
+{"number": "1", "type": "multiple_choice", "points": 3, "body": "$\\triangle ABC$에서 $\\overline{AB} = \\overline{AC}$, $\\angle A = 40^{\\circ}$일 때, $\\angle ACB$의 크기는?", "choices": {"①": "55^{\\circ}", "②": "60^{\\circ}", "③": "65^{\\circ}", "④": "70^{\\circ}", "⑤": "75^{\\circ}"}, "equations": [], "figure": "삼각형 ABC에서 변 AB와 변 AC의 길이가 같은 이등변삼각형이며, 꼭짓점 A의 각도가 40도이다."}

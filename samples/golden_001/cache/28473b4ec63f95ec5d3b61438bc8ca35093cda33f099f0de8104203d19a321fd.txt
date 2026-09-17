@@ -1,0 +1,1 @@
+{"solved": true, "answer": "81°", "steps": ["직선 AC 위에서 ∠ARP+∠PRQ+∠CRQ=180° → ∠ARP+∠CRQ=135°", "∠CRQ : ∠ARP = 3:2 → ∠CRQ = 135°×3/5 = 81°"], "reason": null}
