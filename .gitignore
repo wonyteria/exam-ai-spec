@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+.next/
+out/
+
+# runtime data
+backend/data/
+
+# os
+.DS_Store
+Thumbs.db

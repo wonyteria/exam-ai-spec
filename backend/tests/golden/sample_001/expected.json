@@ -1,0 +1,12 @@
+{
+  "sample": "GOLDEN_SAMPLE_001",
+  "status": "PENDING_HUMAN_CONFIRMATION",
+  "note": "사람이 확정한 Expected Data로 채운 뒤 status를 CONFIRMED로 바꿀 것",
+  "questions": [
+    {"number": 6, "body": null, "numbers": null, "equations": null, "units": null, "points": null, "choices": null, "figure": null, "answer": null},
+    {"number": 7, "body": null, "numbers": null, "equations": null, "units": null, "points": null, "choices": null, "figure": null, "answer": null},
+    {"number": 8, "body": null, "numbers": null, "equations": null, "units": null, "points": null, "choices": null, "figure": null, "answer": null},
+    {"number": 9, "body": null, "numbers": null, "equations": null, "units": null, "points": null, "choices": null, "figure": null, "answer": null},
+    {"number": 10, "body": null, "numbers": null, "equations": null, "units": null, "points": null, "choices": null, "figure": null, "answer": null}
+  ]
+}

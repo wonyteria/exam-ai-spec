@@ -1,0 +1,19 @@
+[project]
+name = "examdna-backend"
+version = "0.1.0"
+description = "AI exam paper restoration/editing/production agent — backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "python-multipart",
+    "pillow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

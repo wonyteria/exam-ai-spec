@@ -1,0 +1,32 @@
+# FILE INDEX
+
+- `ARCHITECTURE.md`
+- `CODEX_START_PROMPT.md`
+- `GOLDEN_SAMPLE_001.md`
+- `MASTER_SPEC.md`
+- `README.md`
+- `ROADMAP.md`
+- `features/01_upload_preprocessing.md`
+- `features/02_student_trace_separator.md`
+- `features/03_print_layer_engine.md`
+- `features/04_source_truth_atu.md`
+- `features/05_multi_recognition.md`
+- `features/06_math_guard.md`
+- `features/07_figure_dna.md`
+- `features/08_question_logic_guard.md`
+- `features/09_zero_typo_gate.md`
+- `features/10_ai_editor.md`
+- `features/11_brand_template.md`
+- `features/12_hwp_export_proof.md`
+- `features/13_ui_scan_motion.md`
+- `features/14_versions_undo.md`
+- `features/15_dataset_learning.md`
+- `features/16_question_bank.md`
+- `features/17_observability_ci.md`
+- `guides/mathematics/CURRICULUM_RULES.md`
+- `guides/mathematics/ERROR_TAXONOMY.md`
+- `guides/mathematics/FIGURE_RULES.md`
+- `guides/mathematics/GOLDEN_TESTS.md`
+- `guides/mathematics/GUIDE.md`
+- `guides/mathematics/QUESTION_LOGIC.md`
+- `guides/mathematics/SYMBOL_RULES.md`
