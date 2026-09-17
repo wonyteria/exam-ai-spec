@@ -9,7 +9,14 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import jobs.runner as runner
 from jobs.store import Store
+
+
+@pytest.fixture(autouse=True)
+def no_real_providers(monkeypatch):
+    """Tests never call real AI providers."""
+    monkeypatch.setattr(runner, "_gemini_provider", lambda: None)
 
 
 @pytest.fixture()

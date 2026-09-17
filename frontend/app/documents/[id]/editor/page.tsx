@@ -83,10 +83,13 @@ function QuestionList({ docId }: { docId: string }) {
       .then((r) => r.json())
       .then((doc) =>
         setQuestions(
-          (doc.questions ?? []).map((q: { number: number; verification: { status: string } }) => ({
-            number: q.number,
-            status: q.verification.status,
-          })),
+          (doc.questions ?? []).map(
+            (q: { number: number; label?: string | null; verification: { status: string } }) => ({
+              number: q.number,
+              label: q.label ?? `${q.number}`,
+              status: q.verification.status,
+            }),
+          ),
         ),
       )
       .catch(() => {});
@@ -98,7 +101,7 @@ function QuestionList({ docId }: { docId: string }) {
     <ul className="space-y-1 text-sm">
       {questions.map((q) => (
         <li key={q.number} className="flex justify-between rounded border px-3 py-2">
-          <span>{q.number}번</span>
+          <span>{q.label}번</span>
           <span className="text-gray-500">{q.status}</span>
         </li>
       ))}

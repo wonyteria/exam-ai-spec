@@ -7,6 +7,7 @@ import { getReviewItems, resolveItem, ReviewItem } from "@/lib/api";
 
 interface LogicFlagGroup {
   question_number: number;
+  question_label?: string;
   flags: { kind: string; detail: string }[];
 }
 
@@ -55,7 +56,7 @@ export default function ReviewPage() {
       {items.map((item) => (
         <div key={item.atu_id} className="mb-4 rounded-lg border p-4">
           <div className="mb-2 flex items-center gap-2 text-sm">
-            <span className="font-semibold">{item.question_number}번 문항</span>
+            <span className="font-semibold">{item.question_label ?? item.question_number}번 문항</span>
             <span className="rounded bg-gray-100 px-2 py-0.5">{item.kind}</span>
             <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">
               {item.status}
@@ -88,7 +89,7 @@ export default function ReviewPage() {
 
       {flags.map((g) => (
         <div key={g.question_number} className="mb-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <span className="font-semibold">{g.question_number}번 문항</span>
+          <span className="font-semibold">{g.question_label ?? g.question_number}번 문항</span>
           <ul className="ml-4 list-disc text-sm text-amber-900">
             {g.flags.map((f, i) => (
               <li key={i}>

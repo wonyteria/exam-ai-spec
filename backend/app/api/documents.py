@@ -47,6 +47,7 @@ def review_items(doc_id: str, store: Store = Depends(get_store)):
                     {
                         "atu_id": atu.id,
                         "question_number": q.number,
+                        "question_label": q.label or str(q.number),
                         "kind": atu.kind.value,
                         "status": atu.status.value,
                         "source": atu.source.model_dump() if atu.source else None,
@@ -54,7 +55,11 @@ def review_items(doc_id: str, store: Store = Depends(get_store)):
                     }
                 )
     flags = [
-        {"question_number": q.number, "flags": [f.model_dump() for f in q.verification.logic_flags]}
+        {
+            "question_number": q.number,
+            "question_label": q.label or str(q.number),
+            "flags": [f.model_dump() for f in q.verification.logic_flags],
+        }
         for q in doc.questions
         if q.verification.logic_flags
     ]

@@ -92,7 +92,8 @@ def test_recognition_to_verified_final(store, sample_png, fake_providers):
     assert result.verification.status == "VERIFIED_FINAL"
 
     (q,) = result.questions
-    assert q.number == 6
+    assert q.number == 1  # positional index; printed number lives in label
+    assert q.label == "6"
     assert q.points == 4
     assert q.body[0].text == "다음 중 $x^2=4$의 해는?"
     assert [c.label for c in q.choices] == ["①", "②", "③", "④"]
@@ -103,8 +104,8 @@ def test_recognition_to_verified_final(store, sample_png, fake_providers):
 
     bbox = q.source.bbox
     assert bbox is not None
-    assert bbox.x == pytest.approx(80)
-    assert bbox.w == pytest.approx(640)
+    assert bbox.x == pytest.approx(48)  # 80px detected - 4% padding
+    assert bbox.w == pytest.approx(704)
 
 
 def test_low_confidence_candidate_stays_unverified(store, sample_png, monkeypatch):

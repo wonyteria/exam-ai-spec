@@ -23,6 +23,7 @@ export interface Job {
 export interface ReviewItem {
   atu_id: string;
   question_number: number;
+  question_label?: string;
   kind: string;
   status: string;
   source: { page: number; bbox?: unknown } | null;

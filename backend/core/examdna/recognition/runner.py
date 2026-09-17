@@ -13,8 +13,12 @@ def run(ctx: PipelineContext) -> None:
         if image is None:
             continue
         for provider in ctx.providers.ocr:
-            for cand in provider.recognize_text(image, region):
-                _ingest(question, provider.name, cand)
+            for attempt in range(3):
+                before = len(question.atus)
+                for cand in provider.recognize_text(image, region):
+                    _ingest(question, provider.name, cand)
+                if _extraction_adequate(question, before):
+                    break
         for provider in ctx.providers.math_ocr:
             for cand in provider.recognize_math(image, region):
                 _ingest(question, provider.name, cand)
@@ -58,6 +62,23 @@ def _ingest(question: Question, provider_name: str, cand: Candidate) -> None:
     question.atus.append(atu)
 
 
+def _extraction_adequate(question: Question, before: int) -> bool:
+    if len(question.atus) == before:
+        return False
+    fields = {a.field for a in question.atus}
+    if "type" in fields and "choice:1" not in fields:
+        mc = any(
+            a.field == "type" and a.candidates and a.candidates[0].value == "multiple_choice"
+            for a in question.atus
+        )
+        if mc and not any(f.startswith("choice:") for f in fields):
+            return False
+    return True
+
+
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
+
+
 def _decompose(data: dict):
     """Structured extraction -> per-field ATU specs (kind, field, value)."""
     if data.get("number") is not None:
@@ -68,7 +89,19 @@ def _decompose(data: dict):
         yield ATUKind.POINTS, "points", data["points"]
     if data.get("body"):
         yield ATUKind.TEXT_TOKEN, "body", data["body"]
-    for label, text in (data.get("choices") or {}).items():
+    choices = data.get("choices")
+    if isinstance(choices, dict):
+        items = list(choices.items())
+    elif isinstance(choices, list):
+        items = [
+            (_CIRCLED[i] if i < len(_CIRCLED) else str(i + 1), text)
+            for i, text in enumerate(choices)
+        ]
+    else:
+        items = []
+    for label, text in items:
         yield ATUKind.CHOICE, f"choice:{label}", text
     for i, latex in enumerate(data.get("equations") or []):
         yield ATUKind.MATH_SYMBOL, f"equation:{i}", latex
+    if data.get("figure"):
+        yield ATUKind.TEXT_TOKEN, "figure", data["figure"]

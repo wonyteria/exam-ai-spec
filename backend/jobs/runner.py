@@ -29,18 +29,19 @@ def default_providers() -> Providers:
         providers.vision.insert(0, gemini)
         providers.math_ocr.insert(0, gemini)
         providers.reasoning.insert(0, gemini)
-        providers.solver.insert(0, gemini)
+        providers.solver.insert(0, _gemini_provider("GEMINI_MODEL_SOLVER") or gemini)
     return providers
 
 
-def _gemini_provider():
+def _gemini_provider(model_env: str = "GEMINI_MODEL"):
     if not os.environ.get("GEMINI_API_KEY"):
         return None
     try:
         from providers.gemini import GeminiProvider
     except ImportError:
         return None
-    return GeminiProvider()
+    model = os.environ.get(model_env) or None
+    return GeminiProvider(model=model)
 
 
 def run_pipeline(store: Store, job_id: str) -> None:

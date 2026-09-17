@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
+import random
+import re
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,20 +15,80 @@ from PIL import Image
 
 from document.models import BBox, Candidate
 
+MAX_RETRIES = 8
+_RETRYABLE = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "500")
+MIN_INTERVAL = float(os.environ.get("GEMINI_MIN_INTERVAL", "4.0"))
+_rate_lock = threading.Lock()
+_last_call = 0.0
+
+CACHE_DIR = Path(
+    os.environ.get(
+        "GEMINI_CACHE_DIR",
+        Path(__file__).resolve().parents[2] / "data" / "cache" / "gemini",
+    )
+)
+CACHE_ENABLED = os.environ.get("GEMINI_CACHE", "1") != "0"
+
+
+class DailyQuotaExhausted(RuntimeError):
+    pass
+
+
+def _cache_key(model: str, contents: list[Any]) -> str:
+    h = hashlib.sha256(model.encode())
+    for c in contents:
+        if isinstance(c, str):
+            h.update(c.encode())
+            continue
+        data = getattr(getattr(c, "inline_data", None), "data", None)
+        h.update(data if isinstance(data, bytes) else repr(c).encode())
+    return h.hexdigest()
+
+
+def _cache_get(key: str) -> str | None:
+    if not CACHE_ENABLED:
+        return None
+    path = CACHE_DIR / f"{key}.txt"
+    return path.read_text(encoding="utf-8") if path.exists() else None
+
+
+def _cache_put(key: str, text: str) -> None:
+    if not CACHE_ENABLED or not text:
+        return
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"{key}.txt").write_text(text, encoding="utf-8")
+
+
+def _pace() -> None:
+    """Keep request rate under the free-tier per-minute quota."""
+    global _last_call
+    with _rate_lock:
+        gap = time.time() - _last_call
+        if gap < MIN_INTERVAL:
+            time.sleep(MIN_INTERVAL - gap)
+        _last_call = time.time()
+
+
+def _server_retry_after(exc: Exception) -> float | None:
+    m = re.search(r"retry in ([\d.]+)\s*s", str(exc))
+    return float(m.group(1)) + 1.0 if m else None
+
 _REGION_PROMPT = """이 이미지는 학생이 풀고 채점한 시험지 페이지입니다.
 각 문제(문항)가 차지하는 영역을 찾아 JSON 배열로만 답하세요.
-[{"number": 문항번호(정수), "ymin": 0-1000, "xmin": 0-1000, "ymax": 0-1000, "xmax": 0-1000}]
-좌표는 이미지 전체를 1000x1000으로 정규화한 값입니다. 문항이 없으면 []를 답하세요."""
+[{"label": "인쇄된 문항 표기(예: 6, 논술형 2, 2-1)", "ymin": 0-1000, "xmin": 0-1000, "ymax": 0-1000, "xmax": 0-1000}]
+좌표는 이미지 전체를 1000x1000으로 정규화한 값입니다. 문항이 없으면 []를 답하세요.
+서술형 답안 공간(빈칸)은 문항이 아니면 제외하세요."""
 
 _EXTRACT_PROMPT = """이 이미지는 시험지의 한 문항 영역입니다. 인쇄된 문제 내용만 구조화해서 JSON으로만 답하세요.
 학생 필기·채점 표시(동그라미, 밑줄, 풀이 메모)는 절대 포함하지 마세요.
 {
- "number": 문항번호(정수),
+ "number": "인쇄된 문항 번호(예: 6 또는 논술형 2-1)",
  "type": "multiple_choice" | "subjective" | "descriptive",
  "points": 배점(정수, 없으면 null),
  "body": "문제 본문 텍스트(수식 위치는 $...$ LaTeX로 인라인)",
  "choices": {"①": "보기내용", "②": "...", ...} (객관식만, 아니면 {}),
- "equations": ["별도 수식 블록 LaTeX", ...] (없으면 [])
+ "equations": ["별도 수식 블록 LaTeX", ...] (없으면 []),
+ "figure": "도형·그림이 있으면 문제 풀이에 필요한 정보를 글로 설명(점 이름, 길이, 각도, 관계). 없으면 null"
 }
 읽기 어려운 부분은 추측하지 말고 해당 필드를 null로 두세요."""
 
@@ -41,10 +106,14 @@ class GeminiProvider:
         from google import genai
 
         self._client = genai.Client()
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+        self.quota_exhausted = False
 
     def detect_regions(self, image: Path) -> list[Candidate]:
-        data = self._generate_json([_image_part(image)], _REGION_PROMPT)
+        try:
+            data = self._generate_json([_image_part(image)], _REGION_PROMPT)
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            return []
         if not isinstance(data, list):
             return []
         return [
@@ -52,7 +121,7 @@ class GeminiProvider:
                 provider=self.name,
                 confidence=0.9,
                 value={
-                    "number": int(item.get("number", i + 1)),
+                    "label": str(item.get("label", i + 1)),
                     "bbox": {
                         "ymin": float(item["ymin"]),
                         "xmin": float(item["xmin"]),
@@ -67,7 +136,10 @@ class GeminiProvider:
 
     def recognize_text(self, image: Path, region: BBox | None = None) -> list[Candidate]:
         part = _image_part(image, region)
-        data = self._generate_json([part], _EXTRACT_PROMPT)
+        try:
+            data = self._generate_json([part], _EXTRACT_PROMPT)
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            return []
         if not isinstance(data, dict):
             return []
         return [
@@ -91,7 +163,10 @@ class GeminiProvider:
 
     def solve(self, problem: dict[str, Any]) -> Candidate:
         prompt = _SOLVE_PROMPT + "\n\n문제:\n" + json.dumps(problem, ensure_ascii=False)
-        data = self._generate_json([prompt])
+        try:
+            data = self._generate_json([prompt])
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            data = None
         if not isinstance(data, dict):
             return Candidate(provider=self.name, value={"solved": False, "answer": None}, confidence=0.0)
         return Candidate(provider=self.name, value=data, confidence=0.85)
@@ -100,19 +175,85 @@ class GeminiProvider:
         from google.genai import types
 
         contents = [*parts, prompt] if prompt else parts
-        resp = self._client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0,
+        resp = self._call(
+            contents,
+            self._config(
+                types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0,
+                    max_output_tokens=32768,
+                )
             ),
         )
-        return json.loads(resp.text)
+        return _parse_json(resp.text)
 
     def _generate_text(self, parts: list[Any]) -> str:
-        resp = self._client.models.generate_content(model=self.model, contents=parts)
-        return resp.text
+        from google.genai import types
+
+        return self._call(parts, self._config(types.GenerateContentConfig())).text
+
+    @staticmethod
+    def _config(config):
+        from google.genai import types
+
+        config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
+            disable=True
+        )
+        return config
+
+    def _call(self, contents: list[Any], config):
+        if self.quota_exhausted:
+            raise DailyQuotaExhausted(self.model)
+        key = _cache_key(self.model, contents)
+        if (cached := _cache_get(key)) is not None:
+            return _CachedResponse(cached)
+        last_exc: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            _pace()
+            try:
+                resp = self._client.models.generate_content(
+                    model=self.model, contents=contents, config=config
+                )
+                _cache_put(key, resp.text or "")
+                return resp
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if "PerDay" in str(exc) or "PerProjectPerDay" in str(exc):
+                    self.quota_exhausted = True
+                    raise DailyQuotaExhausted(self.model) from exc
+                if not any(tag in str(exc) for tag in _RETRYABLE):
+                    raise
+                wait = _server_retry_after(exc) or (
+                    min(2**attempt * 2, 60) + random.uniform(0, 2)
+                )
+                time.sleep(wait)
+        raise last_exc
+
+
+class _CachedResponse:
+    """Mimics the SDK response surface used by this provider (.text)."""
+
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _parse_json(text: str) -> Any:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    for candidate in (cleaned, _escape_latex(cleaned)):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    value, _ = decoder.raw_decode(cleaned)
+    return value
+
+
+def _escape_latex(text: str) -> str:
+    """Models emit raw LaTeX like \\angle inside JSON strings."""
+    return re.sub(r'\\(?![\\"/bfnrtu])', r"\\\\", text)
 
 
 def _image_part(image: Path, region: BBox | None = None):

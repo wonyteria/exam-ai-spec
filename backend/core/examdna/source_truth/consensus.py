@@ -4,6 +4,7 @@ from document.models import (
     Choice,
     Document,
     Equation,
+    Figure,
     Question,
     TextSpan,
     VerificationStatus,
@@ -42,15 +43,25 @@ def run(ctx: PipelineContext) -> None:
 
 
 def _materialize(document: Document) -> None:
-    """Populate question fields from verified ATUs only."""
+    """Populate question fields from verified ATUs only.
+
+    `number` stays the stable positional index; the extracted printed
+    number/label (e.g. "13", "논술형 2", "2-1") goes to `label`.
+    """
     verified = {VerificationStatus.AUTO_VERIFIED, VerificationStatus.HUMAN_VERIFIED}
     for q in document.questions:
         choices: dict[str, str] = {}
         for atu in q.atus:
             if atu.status not in verified or atu.field is None:
                 continue
-            if atu.field == "body":
+            if atu.field == "number":
+                extracted = str(atu.value)
+                if not q.label or (q.label.isdigit() and not extracted.isdigit()):
+                    q.label = extracted
+            elif atu.field == "body":
                 q.body.append(TextSpan(text=str(atu.value), atu_ids=[atu.id]))
+            elif atu.field == "figure":
+                q.figures.append(Figure(topology={"description": str(atu.value)}))
             elif atu.field == "points":
                 try:
                     q.points = int(atu.value)
@@ -68,3 +79,18 @@ def _materialize(document: Document) -> None:
         q.choices = [
             Choice(label=label, body=[TextSpan(text=text)]) for label, text in choices.items()
         ]
+    _sort_questions(document)
+
+
+def _sort_questions(document: Document) -> None:
+    """Reading-order sort: page -> column -> top-to-bottom, then renumber."""
+    def key(q: Question):
+        page = q.source.page if q.source else 0
+        bbox = q.source.bbox if q.source else None
+        width = document.pages[page].width if page < len(document.pages) else 0
+        col = 1 if bbox and width and bbox.x + bbox.w / 2 > width / 2 else 0
+        return (page, col, bbox.y if bbox else 0.0, bbox.x if bbox else 0.0)
+
+    document.questions.sort(key=key)
+    for i, q in enumerate(document.questions, 1):
+        q.number = i

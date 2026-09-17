@@ -138,6 +138,7 @@ class QuestionVerification(BaseModel):
 class Question(BaseModel):
     id: str = Field(default_factory=lambda: new_id("q"))
     number: int
+    label: Optional[str] = None
     type: QuestionType = QuestionType.MULTIPLE_CHOICE
     points: Optional[int] = None
     body: list[TextSpan] = Field(default_factory=list)
