@@ -76,7 +76,9 @@ export default function EditorPage() {
 }
 
 function QuestionList({ docId }: { docId: string }) {
-  const [questions, setQuestions] = useState<{ number: number; status: string }[]>([]);
+  const [questions, setQuestions] = useState<
+    { number: number; label: string; status: string }[]
+  >([]);
 
   useEffect(() => {
     fetch(`${API}/api/documents/${docId}`)
