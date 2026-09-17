@@ -139,6 +139,7 @@ class Question(BaseModel):
     id: str = Field(default_factory=lambda: new_id("q"))
     number: int
     label: Optional[str] = None
+    parent_id: Optional[str] = None  # shared-stem group (e.g. 논술형 2 -> 2-1)
     type: QuestionType = QuestionType.MULTIPLE_CHOICE
     points: Optional[int] = None
     body: list[TextSpan] = Field(default_factory=list)

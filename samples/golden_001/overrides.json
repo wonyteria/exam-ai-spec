@@ -1,0 +1,193 @@
+{
+  "7": {
+    "extraction": {
+      "number": "7",
+      "type": "multiple_choice",
+      "points": 4,
+      "body": "삼각형의 내심과 외심에 대한 설명 중 옳지 않은 것은?",
+      "choices": {
+        "①": "직각삼각형의 외심은 삼각형 외부에 있다",
+        "②": "내심에서 세 변에 이르는 거리는 모두 같다",
+        "③": "내심은 세 내각의 이등분선이 만나는 점이다",
+        "④": "외심은 세 변의 수직이등분선이 만나는 점이다",
+        "⑤": "외심에서 세 꼭짓점에 이르는 거리는 모두 같다"
+      },
+      "equations": [],
+      "figure": null
+    },
+    "answer": "①",
+    "steps": [
+      "직각삼각형의 외심은 빗변의 중점에 있다(외부가 아님) → ①이 옳지 않은 설명",
+      "나머지 ②~⑤는 내심·외심의 정의와 성질과 일치"
+    ]
+  },
+  "4": {
+    "answer": "④",
+    "steps": [
+      "ㄱ: 두 변의 길이가 각각 같으면 직각을 끼인 SAS 합동 → 참",
+      "ㄴ: 각만 같으면 닮음이지 합동이 아님 → 거짓",
+      "ㄷ: 빗변과 한 예각이 같으면 RHA 합동 → 참",
+      "옳은 것은 ㄱ, ㄷ → ④"
+    ]
+  },
+  "13": {
+    "extraction": {
+      "number": "13",
+      "type": "multiple_choice",
+      "points": 5,
+      "body": "□ABCD가 평행사변형이 되는 조건으로 옳은 것은? (단, 점 O는 두 대각선의 교점)",
+      "choices": {
+        "①": "OA=OB, OC=OD",
+        "②": "AD//BC, AB=BC",
+        "③": "AB=DC, AC⊥BD",
+        "④": "∠A=108°, ∠B=72°",
+        "⑤": "AB//DC, ∠DAC=∠BCA"
+      },
+      "equations": [],
+      "figure": "사각형 ABCD와 두 대각선 AC, BD의 교점 O가 표시된 도형"
+    },
+    "answer": "⑤",
+    "steps": [
+      "AB//DC이고 ∠DAC=∠BCA이면 엇각이 같으므로 AD//BC",
+      "두 쌍의 대변이 각각 평행 → 평행사변형"
+    ]
+  },
+  "21": {
+    "extraction": {
+      "number": "논술형 1",
+      "type": "descriptive",
+      "points": 6,
+      "body": "△ABC에서 BC의 중점을 M이라 하고, 점 M에서 AB, AC에 내린 수선의 발을 각각 D, E라고 하자. DM=EM이고, ∠DMB=38°일 때, ∠BAC를 구하려고 한다. 다음 물음에 답하시오.\n1-1. 두 삼각형 △MBD와 △MCE가 합동임을 설명하여, ∠DMB=∠EMC임을 밝히시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.) [4점]\n1-2. ∠DMB=∠EMC임을 이용하여 ∠BAC의 크기를 구하고, 그 과정을 서술하시오. [2점]",
+      "choices": {},
+      "equations": [],
+      "figure": "삼각형 ABC에서 BC의 중점 M, M에서 AB와 AC에 내린 수선의 발 D와 E(직각 표시), ∠DMB=38° 표시된 도형"
+    },
+    "answer": "∠BAC = 76°",
+    "steps": [
+      "BM=CM(M은 중점), DM=EM, ∠MDB=∠MEC=90° → RHS 합동",
+      "△MBD≡△MCE이므로 ∠DMB=∠EMC=38°",
+      "△MBD에서 ∠B=90°-38°=52°, 합동으로 ∠C=52°",
+      "∠BAC=180°-52°-52°=76°"
+    ]
+  },
+  "22": {
+    "extraction": {
+      "number": "논술형 2",
+      "type": "descriptive",
+      "points": 7,
+      "body": "원 I는 직각삼각형 ABC의 내접원이고 점 P, Q, R은 원 I의 접점일 때, ∠RCQ의 크기를 구하려고 한다. 다음 물음에 답하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": "직각삼각형 ABC의 내접원 I와 세 접점 P, Q, R이 표시된 도형"
+    },
+    "answer": null,
+    "steps": []
+  },
+  "23": {
+    "extraction": {
+      "number": "2-1",
+      "type": "descriptive",
+      "points": 3,
+      "body": "원 I의 접점을 연결한 △PQR의 한 내각인 ∠PRQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "45°",
+    "steps": [
+      "접점에서의 각: ∠PRQ = 90° - ∠B/2 (접선과 현이 이루는 각의 성질)",
+      "∠B=90°이므로 ∠PRQ=45°"
+    ]
+  },
+  "24": {
+    "extraction": {
+      "number": "2-2",
+      "type": "descriptive",
+      "points": 2,
+      "body": "∠CRQ : ∠ARP = 3:2일 때, ∠PRQ의 크기를 이용하여 ∠CRQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "81°",
+    "steps": [
+      "직선 AC 위에서 ∠ARP+∠PRQ+∠CRQ=180° → ∠ARP+∠CRQ=135°",
+      "∠CRQ : ∠ARP = 3:2 → ∠CRQ = 135°×3/5 = 81°"
+    ]
+  },
+  "25": {
+    "extraction": {
+      "number": "2-3",
+      "type": "descriptive",
+      "points": 2,
+      "body": "∠CRQ의 크기를 이용하여 ∠RCQ의 크기를 구하고, 그 과정을 서술하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "18°",
+    "steps": [
+      "점 C에서 원 I에 그은 두 접선 CQ, CR은 길이가 같음 → △CQR은 이등변삼각형",
+      "∠RCQ = 180° - 2×81° = 18°"
+    ]
+  },
+  "26": {
+    "extraction": {
+      "number": "논술형 3",
+      "type": "descriptive",
+      "points": 7,
+      "body": "평행사변형 ABCD에서 점 E는 CD의 중점이고, AE의 연장선과 BC의 연장선이 만나는 점을 F라고 하자. 다음 물음에 답하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": "평행사변형 ABCD, CD의 중점 E, AE의 연장선과 BC의 연장선의 교점 F가 표시된 도형"
+    },
+    "answer": null,
+    "steps": []
+  },
+  "27": {
+    "extraction": {
+      "number": "3-1",
+      "type": "descriptive",
+      "points": 3,
+      "body": "△AED와 △FEC가 합동임을 설명하시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.)",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "ASA 합동",
+    "steps": [
+      "AD//BF이므로 ∠ADE=∠FCE(엇각)",
+      "DE=CE(E는 CD의 중점)",
+      "∠AED=∠FEC(맞꼭지각) → ASA 합동"
+    ]
+  },
+  "28": {
+    "extraction": {
+      "number": "3-2",
+      "type": "descriptive",
+      "points": 2,
+      "body": "위 그림에서 AC와 DF를 그어 □ACFD를 만들 때, 사각형은 어떤 사각형인지 쓰시오.",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "평행사변형",
+    "steps": ["△AED≡△FEC에서 AD=CF, AD//CF이므로 평행사변형"]
+  },
+  "29": {
+    "extraction": {
+      "number": "3-3",
+      "type": "descriptive",
+      "points": 2,
+      "body": "3-2에서 답한 사각형인 이유를 서술하시오.",
+      "choices": {},
+      "equations": [],
+      "figure": null
+    },
+    "answer": "한 쌍의 대변 AD와 CF가 평행하고 길이가 같으므로 평행사변형",
+    "steps": [
+      "합동으로 AD=CF이고, AD//BC 위에 F가 있으므로 AD//CF",
+      "한 쌍의 대변이 평행하고 그 길이가 같음 → 평행사변형"
+    ]
+  }
+}

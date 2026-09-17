@@ -12,11 +12,14 @@ def run(ctx: PipelineContext) -> None:
     """
     solved = 0
     attempted = 0
+    stem_ids = {q.parent_id for q in ctx.document.questions if q.parent_id}
     for question in ctx.document.questions:
+        if question.id in stem_ids:
+            continue  # shared stem, not itself a solvable question
         if not (question.body or question.equations or question.figures):
             continue
         attempted += 1
-        problem = _problem(question)
+        problem = _problem(question, ctx.document)
         answers: list[object] = []
         steps: list[str] = []
         for solver in ctx.providers.solver:
@@ -56,9 +59,9 @@ def run(ctx: PipelineContext) -> None:
     ctx.emit("solving", f"{solved}/{attempted} 문항 풀이 완료")
 
 
-def _problem(question) -> dict:
-    return {
-        "number": question.number,
+def _problem(question, document=None) -> dict:
+    problem = {
+        "number": question.label or question.number,
         "type": question.type.value,
         "body": [span.text for span in question.body],
         "equations": [eq.latex for eq in question.equations],
@@ -67,6 +70,15 @@ def _problem(question) -> dict:
         },
         "figures": [f.topology.get("description") for f in question.figures],
     }
+    if document is not None and question.parent_id:
+        parent = next((p for p in document.questions if p.id == question.parent_id), None)
+        if parent:
+            problem["shared_stem"] = {
+                "body": [span.text for span in parent.body],
+                "equations": [eq.latex for eq in parent.equations],
+                "figures": [f.topology.get("description") for f in parent.figures],
+            }
+    return problem
 
 
 def _normalize_answer(raw, question) -> tuple[object, bool]:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from document.models import (
     Choice,
     Document,
@@ -80,6 +82,36 @@ def _materialize(document: Document) -> None:
             Choice(label=label, body=[TextSpan(text=text)]) for label, text in choices.items()
         ]
     _sort_questions(document)
+    _link_subquestions(document)
+
+
+_SUBQ = re.compile(r"^(\d+)-(\d+)$")
+
+
+def _link_subquestions(document: Document) -> None:
+    """Link 'N-M' sub-questions to their shared-stem group question.
+
+    The group stem (e.g. '논술형 2') is a separate detected region; the
+    sub-question needs its body/figures as context for solving and render.
+    """
+    by_label = {q.label: q for q in document.questions if q.label}
+    for q in document.questions:
+        m = _SUBQ.match(q.label or "")
+        if not m:
+            continue
+        group = m.group(1)
+        candidates = [
+            p
+            for label, p in by_label.items()
+            if p is not q and "-" not in label and group in re.findall(r"\d+", label)
+        ]
+        # A group stem like "논술형 2" outranks a plain numbered question "2".
+        parent = next(
+            (p for p in candidates if not (p.label or "").replace(" ", "").isdigit()),
+            candidates[0] if candidates else None,
+        )
+        if parent:
+            q.parent_id = parent.id
 
 
 def _sort_questions(document: Document) -> None:
