@@ -9,6 +9,7 @@ dependencies = [
     "pydantic",
     "python-multipart",
     "pillow",
+    "numpy",
     "google-genai",
     "python-dotenv",
 ]

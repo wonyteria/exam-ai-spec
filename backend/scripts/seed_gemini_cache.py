@@ -71,16 +71,24 @@ def _norm_bbox(bbox: dict, w: float, h: float) -> dict:
     }
 
 
-def seed(doc_id: str, overrides_path: Path | None) -> int:
+def seed(doc_id: str, overrides_path: Path | None, images_from: str | None) -> int:
     doc = json.loads((DATA / "documents" / f"{doc_id}.json").read_text(encoding="utf-8"))
     overrides = (
         json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path else {}
     )
+    # Optionally take page images from another job's variants (e.g. after the
+    # separator starts emitting trace_removed layers the source doc lacks).
+    job_variants = None
+    if images_from:
+        job_variants = sorted((DATA / "jobs" / images_from / "variants").glob("*_trace_removed.png"))
     pages = doc["pages"]
     seeded = 0
 
     for page in pages:
-        image = Path(page["clean_uri"] or page["original"]["uri"])
+        if job_variants and page["index"] < len(job_variants):
+            image = job_variants[page["index"]]
+        else:
+            image = Path(page["clean_uri"] or page["original"]["uri"])
         w, h = page["width"], page["height"]
 
         page_qs = [
@@ -259,5 +267,11 @@ if __name__ == "__main__":
         default=None,
         help="human-verified extraction/answer overrides JSON",
     )
+    parser.add_argument(
+        "--images-from",
+        default=None,
+        metavar="JOB_ID",
+        help="use trace_removed variants from this job's variants dir",
+    )
     args = parser.parse_args()
-    seed(args.document_id, args.overrides)
+    seed(args.document_id, args.overrides, args.images_from)

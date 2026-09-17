@@ -4,16 +4,16 @@ from ..context import PipelineContext
 
 
 def run(ctx: PipelineContext) -> None:
-    """Reconstruct the clean printed layer after trace removal.
-
-    Stub: passes the grayscale variant through as the clean layer.
-    """
+    """Reconstruct the clean printed layer after trace removal."""
+    used_restored = 0
     for page in ctx.document.pages:
-        page.clean_uri = page.original.variants.get(
+        clean = page.original.variants.get("trace_removed")
+        if clean:
+            used_restored += 1
+        page.clean_uri = clean or page.original.variants.get(
             "grayscale", page.original.uri
         )
     ctx.emit(
         "print_layer",
-        f"{len(ctx.document.pages)}페이지 인쇄 레이어 복원 (stub — 그레이스케일 통과)",
-        "warn",
+        f"{len(ctx.document.pages)}페이지 인쇄 레이어 복원 — 필기 제거 적용 {used_restored}페이지",
     )
