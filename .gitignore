@@ -9,6 +9,9 @@ node_modules/
 .next/
 out/
 
+# secrets
+.env
+
 # runtime data
 backend/data/
 

@@ -9,6 +9,8 @@ dependencies = [
     "pydantic",
     "python-multipart",
     "pillow",
+    "google-genai",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]

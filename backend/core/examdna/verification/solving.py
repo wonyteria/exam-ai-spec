@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from document.models import Answer, LogicFlag
+from document.models import Answer, LogicFlag, Solution, TextSpan
 from ..context import PipelineContext
 
 
@@ -12,12 +12,20 @@ def run(ctx: PipelineContext) -> None:
             "number": question.number,
             "type": question.type.value,
             "body": [span.text for span in question.body],
-            "choices": [c.label for c in question.choices],
+            "equations": [eq.latex for eq in question.equations],
+            "choices": {
+                c.label: " ".join(s.text for s in c.body) for c in question.choices
+            },
         }
         for solver in ctx.providers.solver:
             cand = solver.solve(problem)
             if cand.value.get("solved"):
                 question.answer = Answer(value=cand.value.get("answer"))
+                steps = cand.value.get("steps") or []
+                if steps:
+                    question.solution = Solution(
+                        steps=[TextSpan(text=str(s)) for s in steps]
+                    )
                 solved += 1
                 break
         else:

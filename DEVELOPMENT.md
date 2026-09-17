@@ -35,6 +35,19 @@ cd backend
 ./.venv/Scripts/python -m pytest
 ```
 
+## Provider 설정
+
+`backend/.env` 생성 (`.env.example` 참고):
+
+```bash
+GEMINI_API_KEY=<AI Studio에서 발급>
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+키가 없으면 stub provider로 동작 (항상 NEEDS_REVIEW). 키가 있으면 Gemini가
+문항 영역 탐지 → 문항 구조 추출 → 문제 풀이를 수행하고, consensus 규칙
+(2+ provider 일치 또는 confidence ≥ 0.9)으로 AUTO_VERIFIED를 결정한다.
+
 ## 현재 상태 (수직 슬라이스 골격)
 
 - 업로드 → 전 단계 파이프라인 → ZERO TYPO GATE → HWPX/PDF 출력까지 연결됨

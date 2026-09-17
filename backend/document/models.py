@@ -63,6 +63,7 @@ class ATU(BaseModel):
 
     id: str = Field(default_factory=lambda: new_id("atu"))
     kind: ATUKind
+    field: Optional[str] = None
     candidates: list[Candidate] = Field(default_factory=list)
     value: Any = None
     status: VerificationStatus = VerificationStatus.UNVERIFIED
