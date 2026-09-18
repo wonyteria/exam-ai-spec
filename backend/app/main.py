@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import auth, documents, jobs, uploads
+from .api import auth, documents, jobs, uploads, v1
 
 app = FastAPI(title="ExamDNA API", version="0.1.0")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(v1.router)
 app.include_router(uploads.router)
 app.include_router(jobs.router)
 app.include_router(documents.router)

@@ -33,10 +33,14 @@ class PipelineContext:
     workdir: Path
     providers: Providers
     objects: Optional[object] = None  # ObjectStore — resolves local:// URIs
+    event_sink: Optional[Callable[[str, str, str], None]] = None
     hwp_mismatch: int | None = None
 
     def emit(self, stage: str, message: str, level: str = "info") -> None:
-        self.store.emit(self.job, stage, message, level)
+        if self.event_sink is not None:
+            self.event_sink(stage, message, level)
+        else:
+            self.store.emit(self.job, stage, message, level)
 
     def resolve_uri(self, uri: str) -> Path:
         """Map a stored URI to a readable local path. `local://` keys go

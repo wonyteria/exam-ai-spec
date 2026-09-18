@@ -38,10 +38,11 @@ def _gemini_provider(model_env: str = "GEMINI_MODEL"):
         return None
     try:
         from providers.gemini import GeminiProvider
+
+        model = os.environ.get(model_env) or None
+        return GeminiProvider(model=model)
     except ImportError:
         return None
-    model = os.environ.get(model_env) or None
-    return GeminiProvider(model=model)
 
 
 def run_pipeline(store: Store, job_id: str) -> None:

@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch):
     deps.reset()
     import app.api.uploads as uploads_api
 
-    monkeypatch.setattr(uploads_api, "run_pipeline", lambda *a, **k: None)
+    monkeypatch.setattr(uploads_api, "run_once", lambda *a, **k: False)
     from app.main import app
     from fastapi.testclient import TestClient
 

@@ -6,28 +6,47 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from jobs.models import Job, JobState
-from jobs.store import Store
+from canonical.models import JobV2, JobV2State
+from canonical.store import CanonicalStore
 from tenancy.auth import AuthContext, require_auth
 from tenancy.db import TenancyDB
 from tenancy.models import ROLE_ACTIONS
 
-from ..deps import get_store, get_tenancy
+from ..deps import get_canonical, get_tenancy
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-_TERMINAL = {JobState.COMPLETED, JobState.NEEDS_REVIEW, JobState.FAILED}
+_TERMINAL = {
+    JobV2State.SUCCEEDED,
+    JobV2State.FAILED,
+    JobV2State.CANCELLED,
+    JobV2State.COMPLETED_REVIEW_HANDOFF,
+}
+
+# v2 state -> legacy JobState value the existing UI understands
+_STATE_MAP = {
+    JobV2State.QUEUED: "UPLOADED",
+    JobV2State.RETRY_SCHEDULED: "UPLOADED",
+    JobV2State.WAITING_QUOTA: "UPLOADED",
+    JobV2State.WAITING_WORKER: "UPLOADED",
+    JobV2State.RUNNING: "RUNNING",
+    JobV2State.CANCEL_REQUESTED: "RUNNING",
+    JobV2State.SUCCEEDED: "COMPLETED",
+    JobV2State.FAILED: "FAILED",
+    JobV2State.CANCELLED: "CANCELLED",
+    JobV2State.COMPLETED_REVIEW_HANDOFF: "NEEDS_REVIEW",
+}
 
 
 def _resolve_job_access(
-    job_id: str, action: str, request: Request, store: Store
-) -> tuple[AuthContext, Job]:
-    """Load a job and verify tenant access. Cross-tenant and unmigrated
+    job_id: str, action: str, request: Request, cstore: CanonicalStore
+) -> tuple[AuthContext, JobV2]:
+    """Load a v2 job and verify tenant access. Cross-tenant and unknown
     jobs return 404 so existence is not leaked."""
     ctx = require_auth(request)
     db: TenancyDB = get_tenancy()
-    job = store.get_job(job_id)
-    if job is None or job.tenant_id is None:
+    job = cstore.get_job(job_id)
+    if job is None:
         raise HTTPException(404, "job not found")
     m = db.get_membership(job.tenant_id, ctx.user_id)
     if m is None:
@@ -44,30 +63,71 @@ def _resolve_job_access(
     return ctx, job
 
 
+def _to_legacy(job: JobV2, events: list[dict]) -> dict:
+    return {
+        "id": job.id,
+        "document_id": job.document_id,
+        "state": _STATE_MAP.get(job.state, job.state.value),
+        "events": events,
+        "error": job.last_error,
+    }
+
+
+def _event_payload(cstore: CanonicalStore, job_id: str) -> list[dict]:
+    return [
+        {
+            "ts": e.ts,
+            "stage": e.stage or "pipeline",
+            "message": e.data.get("message") or e.event,
+            "level": e.data.get("level", "info"),
+        }
+        for e in cstore.events_since(job_id, 0)
+    ]
+
+
 @router.get("/{job_id}")
-def get_job(job_id: str, request: Request, store: Store = Depends(get_store)):
-    _, job = _resolve_job_access(job_id, "read", request, store)
-    return job
+def get_job(
+    job_id: str, request: Request, cstore: CanonicalStore = Depends(get_canonical)
+):
+    _, job = _resolve_job_access(job_id, "read", request, cstore)
+    return _to_legacy(job, _event_payload(cstore, job_id))
+
+
+@router.post("/{job_id}/cancel")
+def cancel_job(
+    job_id: str, request: Request, cstore: CanonicalStore = Depends(get_canonical)
+):
+    from canonical.store import ConflictError, NotFoundError
+
+    _, job = _resolve_job_access(job_id, "edit", request, cstore)
+    try:
+        job = cstore.request_cancel(job_id)
+    except ConflictError as exc:
+        raise HTTPException(409, {"code": exc.code, "message": str(exc)})
+    except NotFoundError:
+        raise HTTPException(404, "job not found")
+    return _to_legacy(job, _event_payload(cstore, job_id))
 
 
 @router.get("/{job_id}/events")
 async def job_events(
-    job_id: str, request: Request, store: Store = Depends(get_store)
+    job_id: str, request: Request, cstore: CanonicalStore = Depends(get_canonical)
 ):
-    _resolve_job_access(job_id, "read", request, store)
+    _, job = _resolve_job_access(job_id, "read", request, cstore)
 
     async def stream():
         sent = 0
         while True:
-            job = store.get_job(job_id)
+            job = cstore.get_job(job_id)
             if job is None:
                 yield f"data: {json.dumps({'error': 'job not found'})}\n\n"
                 return
-            while sent < len(job.events):
-                yield f"data: {job.events[sent].model_dump_json()}\n\n"
-                sent += 1
-            if job.state in _TERMINAL and sent >= len(job.events):
-                yield f"data: {json.dumps({'done': True, 'state': job.state.value})}\n\n"
+            events = cstore.events_since(job_id, sent)
+            for e in events:
+                yield f"data: {json.dumps({'ts': e.ts, 'stage': e.stage or 'pipeline', 'message': e.data.get('message') or e.event, 'level': e.data.get('level', 'info')})}\n\n"
+                sent = e.seq
+            if job.state in _TERMINAL and sent >= cstore.max_event_seq(job_id):
+                yield f"data: {json.dumps({'done': True, 'state': _STATE_MAP.get(job.state, job.state.value)})}\n\n"
                 return
             await asyncio.sleep(0.4)
 

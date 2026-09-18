@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from canonical.store import CanonicalStore
 from jobs.store import Store
 from storage.local import LocalObjectStore
 from tenancy.db import TenancyDB
@@ -12,6 +13,7 @@ _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _store: Store | None = None
 _tenancy: TenancyDB | None = None
 _objects: LocalObjectStore | None = None
+_canonical: CanonicalStore | None = None
 
 
 def data_dir() -> Path:
@@ -41,9 +43,18 @@ def get_object_store() -> LocalObjectStore:
     return _objects
 
 
+def get_canonical() -> CanonicalStore:
+    global _canonical
+    if _canonical is None:
+        _canonical = CanonicalStore(data_dir() / "canonical.db")
+    return _canonical
+
+
 def reset() -> None:
     """Test hook: drop cached singletons (e.g. after EXAMDNA_DATA changes)."""
-    global _store, _tenancy, _objects
+    global _store, _tenancy, _objects, _canonical
     if _tenancy is not None:
         _tenancy.close()
-    _store = _tenancy = _objects = None
+    if _canonical is not None:
+        _canonical.close()
+    _store = _tenancy = _objects = _canonical = None
