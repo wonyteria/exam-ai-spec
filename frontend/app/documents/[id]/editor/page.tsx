@@ -10,6 +10,7 @@ export default function EditorPage() {
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
+  const [listKey, setListKey] = useState(0);
 
   const submit = async () => {
     if (!instruction.trim() || busy) return;
@@ -23,6 +24,7 @@ export default function EditorPage() {
         ),
       );
       setPreviewKey((k) => k + 1);
+      setListKey((k) => k + 1);
     } else {
       lines.push(`미적용: ${res.detail ?? "적용된 연산 없음"}`);
     }
@@ -41,7 +43,7 @@ export default function EditorPage() {
       <div className="grid flex-1 grid-cols-[1fr_2fr_1fr] divide-x">
         <aside className="overflow-auto p-4">
           <h2 className="mb-3 font-semibold">문제 목록</h2>
-          <QuestionList docId={id} />
+          <QuestionList key={listKey} docId={id} />
         </aside>
 
         <section className="overflow-auto">
@@ -116,9 +118,22 @@ function QuestionList({ docId }: { docId: string }) {
   return (
     <ul className="space-y-1 text-sm">
       {questions.map((q) => (
-        <li key={q.number} className="flex justify-between rounded border px-3 py-2">
+        <li
+          key={q.number}
+          className="flex items-center justify-between rounded border bg-white px-3 py-2"
+        >
           <span>{q.label}번</span>
-          <span className="text-gray-500">{q.status}</span>
+          <span
+            className={`rounded px-1.5 py-0.5 text-xs ${
+              q.status === "HUMAN_VERIFIED" || q.status === "AUTO_VERIFIED"
+                ? "bg-green-100 text-green-700"
+                : q.status === "UNVERIFIED"
+                  ? "bg-gray-100 text-gray-500"
+                  : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            {q.status}
+          </span>
         </li>
       ))}
     </ul>

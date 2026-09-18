@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
 from document.models import VerificationStatus
@@ -34,6 +36,46 @@ def get_document(doc_id: str, store: Store = Depends(get_store)):
 def preview(doc_id: str, store: Store = Depends(get_store)):
     doc = store.load_document(doc_id)
     return render_preview(doc)
+
+
+@router.get("/{doc_id}/crops/{page_index}")
+def source_crop(
+    doc_id: str,
+    page_index: int,
+    x: float = 0,
+    y: float = 0,
+    w: float = 0,
+    h: float = 0,
+    source: str = "original",
+    store: Store = Depends(get_store),
+):
+    """Source image region for review — default the original scan (with the
+    student's marks); `source=clean` serves the restored print layer."""
+    import io
+
+    from PIL import Image
+
+    doc = store.load_document(doc_id)
+    if page_index >= len(doc.pages):
+        raise HTTPException(404, "page not found")
+    page = doc.pages[page_index]
+    uri = page.original.uri if source == "original" else (page.clean_uri or page.original.uri)
+    if not Path(uri).exists():
+        raise HTTPException(404, "source image not found")
+    with Image.open(uri) as im:
+        base = im.convert("RGB")
+        if w > 0 and h > 0:
+            pad = 8
+            box = (
+                max(0, int(x) - pad),
+                max(0, int(y) - pad),
+                min(base.width, int(x + w) + pad),
+                min(base.height, int(y + h) + pad),
+            )
+            base = base.crop(box)
+        buf = io.BytesIO()
+        base.save(buf, "PNG")
+    return Response(buf.getvalue(), media_type="image/png")
 
 
 @router.get("/{doc_id}/review-items")
