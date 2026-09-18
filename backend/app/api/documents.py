@@ -81,9 +81,16 @@ def get_document(access=Depends(doc_access("read"))):
 
 
 @router.get("/{doc_id}/preview", response_class=HTMLResponse)
-def preview(access=Depends(doc_access("read"))):
+def preview(
+    output_mode: str = "STUDENT_WITH_ENDNOTES",
+    access=Depends(doc_access("read")),
+):
+    from renderers.plan import OUTPUT_MODES
+
     _, doc = access
-    return render_preview(doc)
+    if output_mode not in OUTPUT_MODES:
+        raise HTTPException(400, f"unsupported output_mode {output_mode}")
+    return render_preview(doc, output_mode=output_mode)
 
 
 @router.get("/{doc_id}/crops/{page_index}")
@@ -306,6 +313,8 @@ def edit(
 
 class ExportRequest(BaseModel):
     format: str = "hwpx"
+    output_mode: str = "STUDENT_WITH_ENDNOTES"
+    brand_id: str | None = None
 
 
 @router.post("/{doc_id}/exports")
@@ -316,20 +325,27 @@ def export(
     access=Depends(doc_access("export")),
     store: Store = Depends(get_store),
 ):
+    from renderers.plan import OUTPUT_MODES
+
     ctx, doc = access
     out = store.export_dir(doc_id)
     fmt = req.format.lower()
+    if req.output_mode not in OUTPUT_MODES:
+        raise HTTPException(400, f"unsupported output_mode {req.output_mode}")
+    mode = req.output_mode
 
     if fmt == "hwpx":
         path = out / "exam.hwpx"
-        path.write_bytes(render_hwpx(doc))
+        path.write_bytes(render_hwpx(doc, output_mode=mode, brand_id=req.brand_id))
     elif fmt == "pdf":
         path = out / "exam.pdf"
-        path.write_bytes(render_pdf(doc))
+        path.write_bytes(render_pdf(doc, output_mode=mode))
     elif fmt == "hwp":
         hwpx_path = out / "exam.hwpx"
         if not hwpx_path.exists():
-            hwpx_path.write_bytes(render_hwpx(doc))
+            hwpx_path.write_bytes(
+                render_hwpx(doc, output_mode=mode, brand_id=req.brand_id)
+            )
         try:
             path = WindowsHWPWorker().convert(hwpx_path, out / "exam.hwp")
         except HWPWorkerUnavailable as exc:
@@ -337,7 +353,7 @@ def export(
     else:
         raise HTTPException(400, f"unsupported format {req.format}")
     audit(request, ctx, "document.export", "document", doc_id,
-          {"format": fmt, "version": doc.version})
+          {"format": fmt, "output_mode": mode, "version": doc.version})
     return {"file": path.name, "url": f"/api/documents/{doc_id}/files/{path.name}"}
 
 
