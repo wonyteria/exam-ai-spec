@@ -1,1 +1,0 @@
-{"number": "3-1", "type": "descriptive", "points": 3, "body": "$\\triangle AED$와 $\\triangle FEC$가 합동임을 설명하시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.)", "choices": {}, "equations": [], "figure": "삼각형 AED와 삼각형 FEC가 주어져 있으며, 이 두 삼각형이 합동임을 증명하는 문제임."}

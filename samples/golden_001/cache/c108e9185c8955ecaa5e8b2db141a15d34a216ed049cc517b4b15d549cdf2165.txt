@@ -1,1 +1,0 @@
-{"solved": true, "answer": "①", "steps": ["삼각형 AED는 직각삼각형(∠AED=90°)이며, AE=8cm, ED=6cm이므로 피타고라스 정리에 의해 AD = y = sqrt(8^2 + 6^2) = sqrt(64 + 36) = 10cm입니다.", "삼각형 ACD에서 ∠ACD=90°이고, CD=6cm, AD=10cm이므로 피타고라스 정리에 의해 AC = x = sqrt(AD^2 - CD^2) = sqrt(10^2 - 6^2) = sqrt(100 - 36) = sqrt(64) = 8cm입니다.", "따라서 x + y = 8 + 10 = 18입니다."], "reason": null}

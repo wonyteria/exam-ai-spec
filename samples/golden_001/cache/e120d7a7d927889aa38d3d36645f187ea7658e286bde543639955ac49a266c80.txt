@@ -1,1 +1,0 @@
-{"solved": true, "answer": "18°", "steps": ["점 C에서 원 I에 그은 두 접선 CQ, CR은 길이가 같음 → △CQR은 이등변삼각형", "∠RCQ = 180° - 2×81° = 18°"], "reason": null}

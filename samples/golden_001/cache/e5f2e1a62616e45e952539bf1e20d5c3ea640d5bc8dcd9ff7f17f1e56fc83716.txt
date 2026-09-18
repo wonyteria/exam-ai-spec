@@ -1,1 +1,0 @@
-{"number": "2-1", "type": "descriptive", "points": 3, "body": "원 I위의 접점을 연결한 △PQR의 한 내각인 ∠PRQ의 크기를 구하고, 그 과정을 서술하시오.", "choices": {}, "equations": [], "figure": "직각삼각형 ABC 내부에 내접원 I가 있으며, 내접원과 변 AB, BC, CA의 접점을 각각 P, Q, R이라 한다. 삼각형 PQR의 내각 ∠PRQ의 크기를 구하는 문제이다."}

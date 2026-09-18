@@ -1,1 +1,0 @@
-{"number": "2-3", "type": "descriptive", "points": 2, "body": "∠CRQ의 크기를 이용하여 ∠RCQ의 크기를 구하고, 과정을 서술하시오.", "choices": {}, "equations": [], "figure": null}

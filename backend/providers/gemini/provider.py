@@ -96,6 +96,24 @@ _SOLVE_PROMPT = """다음은 복원된 중학교 수학 문제입니다. 실제�
 {"solved": true|false, "answer": 정답(객관식이면 기호, 아니면 값), "steps": ["풀이 단계1", ...], "reason": "풀 수 없으면 이유"}
 문제 조건이 불완전하거나 모순이면 solved=false로 두세요."""
 
+_PAGE_PROMPT = """이 이미지는 학생이 풀고 채점한 시험지 한 페이지입니다.
+인쇄된 모든 문항을 찾아 JSON 배열로만 답하세요. 학생 필기·채점 표시는 절대 포함하지 마세요.
+[{
+ "label": "인쇄된 문항 표기(예: 6, 논술형 2, 2-1)",
+ "bbox": {"ymin": 0-1000, "xmin": 0-1000, "ymax": 0-1000, "xmax": 0-1000},
+ "type": "multiple_choice" | "subjective" | "descriptive",
+ "points": 배점(정수, 없으면 null),
+ "body": "문제 본문 텍스트(수식은 $...$ LaTeX 인라인)",
+ "choices": {"①": "보기내용", ...} (객관식만, 아니면 {}),
+ "equations": ["별도 수식 블록 LaTeX", ...],
+ "figure": "도형이 있으면 풀이에 필요한 정보를 글로 설명. 없으면 null"
+}]
+좌표는 페이지를 1000x1000으로 정규화한 값입니다. 읽기 어려운 부분은 추측하지 말고 null로 두세요."""
+
+_SOLVE_BATCH_PROMPT = """다음은 복원된 중학교 수학 문제들입니다. 각각 실제로 풀어서 JSON 배열로만 답하세요.
+[{"number": 문항 표기, "solved": true|false, "answer": 정답(객관식이면 기호, 아니면 값), "steps": ["단계1", ...], "reason": "풀 수 없으면 이유"}]
+shared_stem이 있으면 공통 지문입니다. 조건이 불완전하거나 모순이면 solved=false로 두세요."""
+
 
 class GeminiProvider:
     """Gemini-backed provider covering vision/ocr/math-ocr/llm/solver roles."""
@@ -108,6 +126,37 @@ class GeminiProvider:
         self._client = genai.Client()
         self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
         self.quota_exhausted = False
+
+    def extract_page(self, image: Path) -> list[Candidate]:
+        """One call per page: regions AND structured extraction together.
+
+        Returns a single structured Candidate holding the question list;
+        segmentation and recognition both consume it (second use = cache hit).
+        """
+        try:
+            data = self._generate_json([_image_part(image)], _PAGE_PROMPT)
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            return []
+        if not isinstance(data, list):
+            return []
+        return [
+            Candidate(provider=self.name, value=data, confidence=0.9, meta={"page_extract": True})
+        ]
+
+    def solve_batch(self, problems: list[dict[str, Any]], run: int = 0) -> list[Candidate]:
+        """Solve many questions in one call; returns one Candidate with the
+        per-question result list. `run` varies the prompt so consensus runs
+        are real calls, not cache hits."""
+        prompt = _SOLVE_BATCH_PROMPT + "\n\n문제들:\n" + json.dumps(problems, ensure_ascii=False)
+        if run:
+            prompt += f"\n\n(독립 검증 {run + 1}회차)"
+        try:
+            data = self._generate_json([prompt])
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            data = None
+        if not isinstance(data, list):
+            return [Candidate(provider=self.name, value=[], confidence=0.0)]
+        return [Candidate(provider=self.name, value=data, confidence=0.85)]
 
     def detect_regions(self, image: Path) -> list[Candidate]:
         try:
@@ -161,8 +210,10 @@ class GeminiProvider:
         text = self._generate_text([json.dumps(context or {}, ensure_ascii=False), prompt])
         return Candidate(provider=self.name, value={"reply": text}, confidence=0.8)
 
-    def solve(self, problem: dict[str, Any]) -> Candidate:
+    def solve(self, problem: dict[str, Any], run: int = 0) -> Candidate:
         prompt = _SOLVE_PROMPT + "\n\n문제:\n" + json.dumps(problem, ensure_ascii=False)
+        if run:
+            prompt += f"\n\n(독립 검증 {run + 1}회차)"
         try:
             data = self._generate_json([prompt])
         except (json.JSONDecodeError, DailyQuotaExhausted):

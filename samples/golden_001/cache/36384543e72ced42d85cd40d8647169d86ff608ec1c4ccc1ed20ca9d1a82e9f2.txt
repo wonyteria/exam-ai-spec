@@ -1,1 +1,0 @@
-{"number": "2-1", "type": "descriptive", "points": 3, "body": "원 I의 접점을 연결한 △PQR의 한 내각인 ∠PRQ의 크기를 구하고, 그 과정을 서술하시오.", "choices": {}, "equations": [], "figure": null}

@@ -1,1 +1,0 @@
-{"number": "3-3", "type": "descriptive", "points": 2, "body": "3-2에서 답한 사각형인 이유를 서술하시오.", "choices": {}, "equations": [], "figure": null}

@@ -1,1 +1,0 @@
-{"number": "3-2", "type": "descriptive", "points": 2, "body": "위 그림에서 AC와 DF를 그어 □ACFD를 만들 때, 사각형은 어떤 사각형인지 쓰시오.", "choices": {}, "equations": [], "figure": null}

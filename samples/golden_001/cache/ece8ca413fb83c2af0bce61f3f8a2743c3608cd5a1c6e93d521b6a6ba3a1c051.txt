@@ -1,1 +1,0 @@
-{"number": "18", "type": "multiple_choice", "points": 3, "body": "□ABCD는 정사각형이고, 두 대각선의 교점을 O라 하자. $\\overline{AO}=7\\text{cm}$일 때, 사각형의 넓이($\\text{cm}^2$)는?", "choices": {"①": "63", "②": "72", "③": "81", "④": "98", "⑤": "104"}, "equations": [], "figure": "정사각형 ABCD와 그 대각선의 교점 O가 표시되어 있으며, 대각선 AO의 길이가 7cm로 주어짐."}

@@ -1,1 +1,0 @@
-{"number": "13", "type": "multiple_choice", "points": 5, "body": "□ABCD가 평행사변형이 되는 조건으로 옳은 것은? (단, 점 O는 두 대각선의 교점)", "choices": {"①": "OA = OB, OC = OD", "②": "AD // BC, AB = BC"}, "equations": [], "figure": "A quadrilateral ABCD with diagonals AC and BD intersecting at point O. The figure shows markings indicating AD // BC and AB // DC."}

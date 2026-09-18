@@ -1,1 +1,0 @@
-{"solved": true, "answer": "한 쌍의 대변 AD와 CF가 평행하고 길이가 같으므로 평행사변형", "steps": ["합동으로 AD=CF이고, AD//BC 위에 F가 있으므로 AD//CF", "한 쌍의 대변이 평행하고 그 길이가 같음 → 평행사변형"], "reason": null}

@@ -1,1 +1,0 @@
-{"number": "논술형 2", "type": "descriptive", "points": 7, "body": "원 I는 직각삼각형 ABC의 내접원이고 점 P, Q, R은 원 I의 접점일 때, ∠RCQ의 크기를 구하려고 한다. 다음 물음에 답하시오.", "choices": {}, "equations": [], "figure": "직각삼각형 ABC와 그 내접원 I가 주어져 있으며, P, Q, R은 내접원 I와 삼각형의 각 변이 만나는 접점입니다."}

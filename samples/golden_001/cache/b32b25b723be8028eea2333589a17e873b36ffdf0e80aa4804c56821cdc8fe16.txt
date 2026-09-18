@@ -1,1 +1,0 @@
-{"number": "9", "type": "multiple_choice", "points": 3, "body": "점 O가 $\\triangle ABC$의 외심일 때, $x$의 값은?", "choices": {"①": "100", "②": "105", "③": "110", "④": "115", "⑤": "120"}, "equations": [], "figure": "삼각형 ABC가 있고, 점 O는 삼각형의 외심입니다. 각 A의 크기는 50도입니다. 점 O를 중심으로 하는 각 BOC의 크기가 x도입니다."}

@@ -1,1 +1,0 @@
-{"solved": true, "answer": "⑤", "steps": ["AB//DC이고 ∠DAC=∠BCA이면 엇각이 같으므로 AD//BC", "두 쌍의 대변이 각각 평행 → 평행사변형"], "reason": null}

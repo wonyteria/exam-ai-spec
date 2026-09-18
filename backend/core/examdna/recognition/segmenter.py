@@ -9,22 +9,21 @@ from ..context import PipelineContext
 def run(ctx: PipelineContext) -> None:
     """Question segmentation: find question regions on each page."""
     questions: list[Question] = []
+    ctx.page_extractions = {}  # page index -> [(provider name, item)] for runner
     for page in ctx.document.pages:
         image = Path(page.clean_uri or page.original.uri)
         page_questions: list[Question] = []
         for provider in ctx.providers.vision:
-            for cand in provider.detect_regions(image):
-                label = str(cand.value.get("label", len(questions) + len(page_questions) + 1))
-                number, parsed_label = _parse_label(
-                    label, len(questions) + len(page_questions) + 1
-                )
+            for cand in _region_candidates(provider, image, page.index, ctx):
+                position = len(questions) + len(page_questions) + 1
+                label = str(cand.get("label") or cand.get("number") or position)
                 page_questions.append(
                     Question(
-                        number=number,
-                        label=parsed_label,
+                        number=position,
+                        label=label,
                         source=SourceRef(
                             page=page.index,
-                            bbox=_to_pixels(cand.value.get("bbox"), page.width, page.height),
+                            bbox=_to_pixels(cand.get("bbox"), page.width, page.height),
                         ),
                     )
                 )
@@ -39,6 +38,21 @@ def run(ctx: PipelineContext) -> None:
 
 
 GAP = 6.0
+
+
+def _region_candidates(provider, image: Path, page_index: int, ctx) -> list[dict]:
+    """Prefer one-call page extraction (bbox + content); fall back to
+    region-only detection for providers that lack it. Extraction items are
+    stashed on the context so recognition doesn't re-call the provider."""
+    if hasattr(provider, "extract_page"):
+        for cand in provider.extract_page(image):
+            items = cand.value if isinstance(cand.value, list) else []
+            if items:
+                ctx.page_extractions.setdefault(page_index, []).extend(
+                    (provider.name, i) for i in items if isinstance(i, dict)
+                )
+                return items
+    return [c.value for c in provider.detect_regions(image) if isinstance(c.value, dict)]
 
 
 def _extend_regions(questions: list[Question], page) -> None:
@@ -63,13 +77,6 @@ def _extend_regions(questions: list[Question], page) -> None:
                 bottom = min(page.height - GAP, b.y + b.h * 3)
             if bottom > b.y + b.h:
                 b.h = bottom - b.y
-
-
-def _parse_label(label: str, fallback: int) -> tuple[int, str | None]:
-    try:
-        return int(label), None
-    except ValueError:
-        return fallback, label
 
 
 PAD = 0.04

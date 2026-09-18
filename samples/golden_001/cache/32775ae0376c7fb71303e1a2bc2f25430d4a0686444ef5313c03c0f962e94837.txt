@@ -1,1 +1,0 @@
-{"number": "논술형 3", "type": "descriptive", "points": 7, "body": "평행사변형 ABCD에서 점 E는 $\\overline{CD}$의 중점이고, $\\overline{AE}$의 연장선과 $\\overline{BC}$의 연장선이 만나는 점을 F라고 하자. 다음 물음에 답하시오.", "choices": {}, "equations": [], "figure": "평행사변형 ABCD가 있고, 변 CD의 중점 E가 표시되어 있다. 선분 AE를 연장하고 선분 BC를 연장하여 만나는 점을 F라고 정의한다."}

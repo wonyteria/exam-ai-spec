@@ -1,1 +1,0 @@
-{"number": "논술형 3", "type": "descriptive", "points": 7, "body": "평행사변형 ABCD에서 점 E는 CD의 중점이고, AE의 연장선과 BC의 연장선이 만나는 점을 F라고 하자. 다음 물음에 답하시오.", "choices": {}, "equations": [], "figure": "평행사변형 ABCD, CD의 중점 E, AE의 연장선과 BC의 연장선의 교점 F가 표시된 도형"}

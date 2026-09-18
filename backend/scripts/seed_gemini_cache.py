@@ -30,11 +30,10 @@ from providers.gemini import provider as gp  # noqa: E402
 from providers.gemini.provider import (  # noqa: E402
     _cache_key,
     _cache_put,
-    _EXTRACT_PROMPT,
-    _REGION_PROMPT,
-    _SOLVE_PROMPT,
+    _PAGE_PROMPT,
+    _SOLVE_BATCH_PROMPT,
 )
-from core.examdna.recognition.segmenter import GAP, PAD  # noqa: E402
+from core.examdna.recognition.segmenter import PAD  # noqa: E402
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 
@@ -83,6 +82,8 @@ def seed(doc_id: str, overrides_path: Path | None, images_from: str | None) -> i
         job_variants = sorted((DATA / "jobs" / images_from / "variants").glob("*_trace_removed.png"))
     pages = doc["pages"]
     seeded = 0
+    batch_problems: list[dict] = []
+    batch_results: list[dict] = []
 
     for page in pages:
         if job_variants and page["index"] < len(job_variants):
@@ -96,37 +97,34 @@ def seed(doc_id: str, overrides_path: Path | None, images_from: str | None) -> i
             for q in doc["questions"]
             if q.get("source") and q["source"]["page"] == page["index"] and q["source"].get("bbox")
         ]
-        extended = _extended_bboxes(page_qs, w, h)
 
-        # detect_regions response for the whole page
-        regions = [
-            {
-                "label": str(q.get("label") or q["number"]),
-                **_norm_bbox(q["source"]["bbox"], w, h),
-            }
-            for q in page_qs
-        ]
+        # extract_page response: regions + extraction in one array
+        items = []
+        for q in page_qs:
+            override = overrides.get(str(q["number"])) or {}
+            ext = override.get("extraction") or _question_to_extraction(q)
+            if not ext:
+                continue
+            item = {"label": str(ext.get("number") or q.get("label") or q["number"])}
+            item["bbox"] = _norm_bbox(q["source"]["bbox"], w, h)
+            for k in ("type", "points", "body", "choices", "equations", "figure"):
+                item[k] = ext.get(k)
+            items.append(item)
         key = _cache_key(
             "gemini-3.1-flash-lite",
-            [_part(_image_bytes(image)), _REGION_PROMPT],
+            [_part(_image_bytes(image)), _PAGE_PROMPT],
         )
-        _cache_put(key, json.dumps(regions, ensure_ascii=False))
+        _cache_put(key, json.dumps(items, ensure_ascii=False))
         seeded += 1
 
+        # solver problems/results (batched once across the doc)
+        stem_ids = {
+            (q.get("parent_id") or _derive_parent_id(q, doc)) for q in doc["questions"]
+        } - {None}
         for q in page_qs:
-            src = q["source"]
-            bbox = extended[id(q)]
+            if q["id"] in stem_ids:
+                continue
             override = overrides.get(str(q["number"])) or {}
-            extraction = override.get("extraction") or _question_to_extraction(q)
-            if extraction:
-                key = _cache_key(
-                    "gemini-3.1-flash-lite",
-                    [_part(_image_bytes(image, bbox)), _EXTRACT_PROMPT],
-                )
-                _cache_put(key, json.dumps(extraction, ensure_ascii=False))
-                seeded += 1
-
-            # solver response
             merged = _merged_question(q, override)
             problem = _problem_payload(merged)
             if problem is None:
@@ -147,45 +145,35 @@ def seed(doc_id: str, overrides_path: Path | None, images_from: str | None) -> i
                             for f in p_merged.get("figures", [])
                         ],
                     }
+            batch_problems.append(problem)
             answer = override.get("answer") or (q.get("answer") or {}).get("value")
             steps = override.get("steps") or [
                 s["text"] for s in (q.get("solution") or {}).get("steps", [])
             ]
-            solved = {
-                "solved": bool(answer),
-                "answer": answer,
-                "steps": steps,
-                "reason": None if answer else "seed: no verified answer",
-            }
-            prompt = _SOLVE_PROMPT + "\n\n문제:\n" + json.dumps(problem, ensure_ascii=False)
-            key = _cache_key("gemini-3.1-flash-lite", [prompt])
-            _cache_put(key, json.dumps(solved, ensure_ascii=False))
-            seeded += 1
+            batch_results.append(
+                {
+                    "number": problem["number"],
+                    "solved": bool(answer),
+                    "answer": answer,
+                    "steps": steps,
+                    "reason": None if answer else "seed: no verified answer",
+                }
+            )
+
+    # solve_batch responses — one key per consensus run (run index varies
+    # the prompt so each run is a genuine call)
+    body = json.dumps(batch_results, ensure_ascii=False)
+    for run in range(2):
+        prompt = _SOLVE_BATCH_PROMPT + "\n\n문제들:\n" + json.dumps(
+            batch_problems, ensure_ascii=False
+        )
+        if run:
+            prompt += f"\n\n(독립 검증 {run + 1}회차)"
+        _cache_put(_cache_key("gemini-3.1-flash-lite", [prompt]), body)
+        seeded += 1
 
     print(f"seeded {seeded} cache entries from {doc_id}")
     return seeded
-
-
-def _extended_bboxes(page_qs: list[dict], w: float, h: float) -> dict[int, dict]:
-    """Re-derive the pipeline's extended crop bbox for each stored question."""
-    columns: dict[int, list[dict]] = {}
-    for q in page_qs:
-        b = q["source"]["bbox"]
-        col = 1 if b["x"] + b["w"] / 2 > w / 2 else 0
-        columns.setdefault(col, []).append(q)
-    result: dict[int, dict] = {}
-    for col_qs in columns.values():
-        col_qs.sort(key=lambda q: q["source"]["bbox"]["y"])
-        for i, q in enumerate(col_qs):
-            b = dict(q["source"]["bbox"])
-            if i + 1 < len(col_qs):
-                bottom = col_qs[i + 1]["source"]["bbox"]["y"] - GAP
-            else:
-                bottom = min(h - GAP, b["y"] + b["h"] * 3)
-            if bottom > b["y"] + b["h"]:
-                b["h"] = bottom - b["y"]
-            result[id(q)] = b
-    return result
 
 
 def _question_to_extraction(q: dict) -> dict | None:

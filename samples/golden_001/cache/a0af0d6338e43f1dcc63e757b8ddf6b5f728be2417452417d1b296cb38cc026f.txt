@@ -1,1 +1,0 @@
-{"solved": true, "answer": "∠BAC = 76°", "steps": ["BM=CM(M은 중점), DM=EM, ∠MDB=∠MEC=90° → RHS 합동", "△MBD≡△MCE이므로 ∠DMB=∠EMC=38°", "△MBD에서 ∠B=90°-38°=52°, 합동으로 ∠C=52°", "∠BAC=180°-52°-52°=76°"], "reason": null}

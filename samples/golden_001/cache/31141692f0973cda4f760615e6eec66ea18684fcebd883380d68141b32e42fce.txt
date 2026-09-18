@@ -1,1 +1,0 @@
-{"number": "3-1", "type": "descriptive", "points": 3, "body": "△AED와 △FEC가 합동임을 설명하시오. (단, 만족하는 합동 조건을 반드시 포함하여 설명하시오.)", "choices": {}, "equations": [], "figure": null}

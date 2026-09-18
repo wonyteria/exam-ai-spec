@@ -1,1 +1,0 @@
-{"number": "13", "type": "multiple_choice", "points": 5, "body": "□ABCD가 평행사변형이 되는 조건으로 옳은 것은? (단, 점 O는 두 대각선의 교점)", "choices": {"①": "OA=OB, OC=OD", "②": "AD//BC, AB=BC", "③": "AB=DC, AC⊥BD", "④": "∠A=108°, ∠B=72°", "⑤": "AB//DC, ∠DAC=∠BCA"}, "equations": [], "figure": "사각형 ABCD와 두 대각선 AC, BD의 교점 O가 표시된 도형"}
