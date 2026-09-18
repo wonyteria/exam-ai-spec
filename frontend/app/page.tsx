@@ -1,14 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { uploadFiles } from "@/lib/api";
+import AcademyBar from "@/components/AcademyBar";
+import {
+  listDocuments,
+  uploadFiles,
+  type DocumentSummary,
+} from "@/lib/api";
 
 export default function UploadPage() {
   const router = useRouter();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocumentSummary[]>([]);
+
+  const refreshLibrary = useCallback(async () => {
+    try {
+      setDocs(await listDocuments());
+    } catch {
+      setDocs([]); // no active tenant yet — library stays empty
+    }
+  }, []);
 
   const onFiles = useCallback(
     async (files: FileList | null) => {
@@ -27,11 +42,14 @@ export default function UploadPage() {
   );
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="mb-2 text-3xl font-bold">AI 시험지 복원</h1>
-      <p className="mb-8 text-gray-500">
-        풀고 채점한 시험지를 올리면 원래 인쇄 시험지로 복원합니다
-      </p>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
+      <AcademyBar onChanged={refreshLibrary} />
+      <div className="text-center">
+        <h1 className="mb-2 text-3xl font-bold">AI 시험지 복원</h1>
+        <p className="text-gray-500">
+          풀고 채점한 시험지를 올리면 원래 인쇄 시험지로 복원합니다
+        </p>
+      </div>
       <label
         onDragOver={(e) => {
           e.preventDefault();
@@ -59,7 +77,29 @@ export default function UploadPage() {
           onChange={(e) => onFiles(e.target.files)}
         />
       </label>
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {docs.length > 0 && (
+        <div className="w-full max-w-2xl">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">문서 보관함</h2>
+          <ul className="divide-y rounded-xl border border-gray-200 bg-white">
+            {docs.map((d) => (
+              <li key={d.id}>
+                <Link
+                  href={`/documents/${d.id}/editor`}
+                  className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                >
+                  <span className="text-sm">
+                    {String(d.metadata?.school || "시험지")} — {d.questions}문항,{" "}
+                    {d.pages}페이지
+                  </span>
+                  <span className="text-xs text-gray-500">{d.status}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </main>
   );
 }

@@ -26,18 +26,19 @@ def run(ctx: PipelineContext) -> None:
     stroke pixels are whitened. Print-layer restoration consumes it.
     """
     total_marks = 0
+    work = ctx.workdir / "trace"
+    work.mkdir(exist_ok=True)
     for page in ctx.document.pages:
         gray_uri = page.original.variants.get("grayscale", page.original.uri)
-        gray_path = Path(gray_uri)
+        gray_path = ctx.resolve_uri(gray_uri)
         if not gray_path.exists():
             page.trace_mask_uri = None
             continue
 
         gray = np.asarray(Image.open(gray_path).convert("L"), dtype=np.uint8)
-        mask = _trace_mask(gray, Path(page.original.uri))
+        mask = _trace_mask(gray, ctx.resolve_uri(page.original.uri))
         total_marks += int(mask.sum())
 
-        work = gray_path.parent
         mask_img = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
         mask_path = work / f"{gray_path.stem}_trace_mask.png"
         mask_img.save(mask_path)

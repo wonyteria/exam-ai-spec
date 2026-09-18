@@ -35,6 +35,7 @@ class JobEvent(BaseModel):
 class Job(BaseModel):
     id: str = Field(default_factory=lambda: new_id("job"))
     document_id: str
+    tenant_id: Optional[str] = None
     kind: str = "restore_pipeline"
     state: JobState = JobState.UPLOADED
     events: list[JobEvent] = Field(default_factory=list)

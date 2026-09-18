@@ -30,6 +30,35 @@ class Store:
     def document_path(self, doc_id: str) -> Path:
         return self.data_dir / "documents" / f"{doc_id}.json"
 
+    def list_documents(self, tenant_id: str) -> list[Document]:
+        """List documents owned by a tenant. Documents without a tenant_id
+        (legacy/unmigrated) are never returned — they stay invisible until
+        explicitly mapped to an academy (WP01 contract)."""
+        docs_dir = self.data_dir / "documents"
+        out: list[Document] = []
+        for path in sorted(docs_dir.glob("*.json")):
+            try:
+                doc = Document.model_validate_json(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if doc.tenant_id == tenant_id:
+                out.append(doc)
+        return out
+
+    def list_unmigrated(self) -> list[Document]:
+        """Documents with no tenant mapping — for the explicit import tool
+        only, never served via the API."""
+        docs_dir = self.data_dir / "documents"
+        out: list[Document] = []
+        for path in sorted(docs_dir.glob("*.json")):
+            try:
+                doc = Document.model_validate_json(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if doc.tenant_id is None:
+                out.append(doc)
+        return out
+
     def create_job(self, job: Job) -> Job:
         self._jobs[job.id] = job
         self._persist(job)

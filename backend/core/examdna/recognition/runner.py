@@ -56,7 +56,7 @@ def _page_extractions(ctx: PipelineContext) -> dict[int, list[tuple[str, dict]]]
         return stashed
     out: dict[int, list[tuple[str, dict]]] = {}
     for page in ctx.document.pages:
-        image = Path(page.clean_uri or page.original.uri)
+        image = ctx.resolve_uri(page.clean_uri or page.original.uri)
         for provider in ctx.providers.vision:
             if not hasattr(provider, "extract_page"):
                 continue
@@ -89,7 +89,7 @@ def _question_image(ctx: PipelineContext, question: Question):
     if not question.source or question.source.page >= len(ctx.document.pages):
         return None, None
     page = ctx.document.pages[question.source.page]
-    return Path(page.clean_uri or page.original.uri), question.source.bbox
+    return ctx.resolve_uri(page.clean_uri or page.original.uri), question.source.bbox
 
 
 def _ingest(question: Question, provider_name: str, cand: Candidate) -> None:

@@ -11,7 +11,7 @@ def run(ctx: PipelineContext) -> None:
     questions: list[Question] = []
     ctx.page_extractions = {}  # page index -> [(provider name, item)] for runner
     for page in ctx.document.pages:
-        image = Path(page.clean_uri or page.original.uri)
+        image = ctx.resolve_uri(page.clean_uri or page.original.uri)
         page_questions: list[Question] = []
         for provider in ctx.providers.vision:
             for cand in _region_candidates(provider, image, page.index, ctx):

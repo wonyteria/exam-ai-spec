@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from document.models import Document
 from jobs.models import Job
@@ -32,10 +32,21 @@ class PipelineContext:
     store: Store
     workdir: Path
     providers: Providers
+    objects: Optional[object] = None  # ObjectStore — resolves local:// URIs
     hwp_mismatch: int | None = None
 
     def emit(self, stage: str, message: str, level: str = "info") -> None:
         self.store.emit(self.job, stage, message, level)
+
+    def resolve_uri(self, uri: str) -> Path:
+        """Map a stored URI to a readable local path. `local://` keys go
+        through the private object store; plain paths (legacy/sample data,
+        job-workdir intermediates) pass through unchanged."""
+        if uri.startswith("local://"):
+            if self.objects is None:
+                raise RuntimeError("object store is not configured")
+            return self.objects.open(uri)  # type: ignore[union-attr]
+        return Path(uri)
 
 
 StageFn = Callable[[PipelineContext], None]

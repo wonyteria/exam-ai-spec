@@ -12,16 +12,19 @@ _VARIANTS = ("grayscale", "high_contrast", "binarized")
 
 
 def run(ctx: PipelineContext) -> None:
-    uploads = sorted((ctx.workdir / "uploads").iterdir())
-    if not uploads:
+    """Normalize page images: derive grayscale/high-contrast/binarized
+    variants into the job workdir. Originals are immutable blobs and are
+    never modified in place."""
+    if not ctx.document.pages:
+        _import_legacy_uploads(ctx)
+    if not ctx.document.pages:
         ctx.emit("preprocessing", "업로드된 파일이 없습니다", "warn")
         return
 
-    ctx.document.pages = []
-    for index, path in enumerate(uploads):
+    for page in ctx.document.pages:
+        path = ctx.resolve_uri(page.original.uri)
         ext = path.suffix.lower()
-        page = Page(index=index, original=PageImage(uri=str(path)))
-        if ext in _IMAGE_EXTS:
+        if ext in _IMAGE_EXTS and path.exists():
             page.original.variants = _make_variants(path, ctx.workdir)
             with Image.open(path) as im:
                 page.width, page.height = im.size
@@ -31,9 +34,22 @@ def run(ctx: PipelineContext) -> None:
                 f"{path.name}: PDF 래스터라이저 미연결 — 페이지 이미지 없이 등록",
                 "warn",
             )
-        ctx.document.pages.append(page)
+        elif not path.exists():
+            ctx.emit("preprocessing", f"{path.name}: 원본을 찾을 수 없습니다", "warn")
 
     ctx.emit("preprocessing", f"{len(ctx.document.pages)}페이지 정규화 완료")
+
+
+def _import_legacy_uploads(ctx: PipelineContext) -> None:
+    """Jobs created before object storage kept files under
+    workdir/uploads with no document.pages — keep importing those."""
+    uploads_dir = ctx.workdir / "uploads"
+    if not uploads_dir.exists():
+        return
+    for index, path in enumerate(sorted(uploads_dir.iterdir())):
+        ctx.document.pages.append(
+            Page(index=index, original=PageImage(uri=str(path)))
+        )
 
 
 def _make_variants(path: Path, workdir: Path) -> dict[str, str]:

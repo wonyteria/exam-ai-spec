@@ -50,12 +50,15 @@ def run_pipeline(store: Store, job_id: str) -> None:
         raise KeyError(f"unknown job {job_id}")
 
     workdir = Path(store.job_dir(job_id))
+    from app.deps import get_object_store
+
     ctx = PipelineContext(
         document=store.load_document(job.document_id),
         job=job,
         store=store,
         workdir=workdir,
         providers=default_providers(),
+        objects=get_object_store(),
     )
 
     try:

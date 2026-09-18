@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -12,8 +12,16 @@ from renderers.hwp import HWPWorkerUnavailable, WindowsHWPWorker
 from renderers.hwpx import render_hwpx
 from renderers.pdf import render_pdf
 from renderers.web import render_preview
+from storage.local import LocalObjectStore, sanitize_filename
+from tenancy.auth import (
+    AuthContext,
+    audit,
+    require_action,
+    require_tenant,
+    resolve_document_access,
+)
 
-from ..deps import get_store
+from ..deps import get_object_store, get_store
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -24,17 +32,57 @@ _REVIEW_STATUSES = {
 }
 
 
+def doc_access(action: str):
+    """Dependency: resolve document + tenant/role authorization before the
+    request body is validated, so unauthorized callers always get 404/403
+    rather than a 422 that could distinguish request shapes."""
+
+    def dep(
+        doc_id: str, request: Request, store: Store = Depends(get_store)
+    ):
+        return resolve_document_access(doc_id, action, request, store)
+
+    return dep
+
+
+def _image_path(uri: str, objects: LocalObjectStore) -> Path:
+    if uri.startswith("local://"):
+        return objects.open(uri)
+    return Path(uri)
+
+
+@router.get("")
+def list_documents(
+    request: Request,
+    store: Store = Depends(get_store),
+    ctx: AuthContext = Depends(require_tenant),
+):
+    """Document library for the caller's active academy only."""
+    docs = store.list_documents(ctx.tenant_id)
+    return {
+        "documents": [
+            {
+                "id": d.id,
+                "version": d.version,
+                "pages": len(d.pages),
+                "questions": len(d.questions),
+                "status": d.verification.status,
+                "metadata": d.metadata.model_dump(),
+            }
+            for d in docs
+        ]
+    }
+
+
 @router.get("/{doc_id}")
-def get_document(doc_id: str, store: Store = Depends(get_store)):
-    try:
-        return store.load_document(doc_id)
-    except FileNotFoundError:
-        raise HTTPException(404, "document not found")
+def get_document(access=Depends(doc_access("read"))):
+    _, doc = access
+    return doc
 
 
 @router.get("/{doc_id}/preview", response_class=HTMLResponse)
-def preview(doc_id: str, store: Store = Depends(get_store)):
-    doc = store.load_document(doc_id)
+def preview(access=Depends(doc_access("read"))):
+    _, doc = access
     return render_preview(doc)
 
 
@@ -42,12 +90,14 @@ def preview(doc_id: str, store: Store = Depends(get_store)):
 def source_crop(
     doc_id: str,
     page_index: int,
+    request: Request,
     x: float = 0,
     y: float = 0,
     w: float = 0,
     h: float = 0,
     source: str = "original",
-    store: Store = Depends(get_store),
+    access=Depends(doc_access("review")),
+    objects: LocalObjectStore = Depends(get_object_store),
 ):
     """Source image region for review — default the original scan (with the
     student's marks); `source=clean` serves the restored print layer."""
@@ -55,14 +105,15 @@ def source_crop(
 
     from PIL import Image
 
-    doc = store.load_document(doc_id)
+    _, doc = access
     if page_index >= len(doc.pages):
         raise HTTPException(404, "page not found")
     page = doc.pages[page_index]
     uri = page.original.uri if source == "original" else (page.clean_uri or page.original.uri)
-    if not Path(uri).exists():
+    path = _image_path(uri, objects)
+    if not path.exists():
         raise HTTPException(404, "source image not found")
-    with Image.open(uri) as im:
+    with Image.open(path) as im:
         base = im.convert("RGB")
         if w > 0 and h > 0:
             pad = 8
@@ -79,8 +130,8 @@ def source_crop(
 
 
 @router.get("/{doc_id}/review-items")
-def review_items(doc_id: str, store: Store = Depends(get_store)):
-    doc = store.load_document(doc_id)
+def review_items(access=Depends(doc_access("review"))):
+    _, doc = access
     items = []
     for q in doc.questions:
         for atu in q.atus:
@@ -118,8 +169,14 @@ class ResolveRequest(BaseModel):
 
 
 @router.post("/{doc_id}/review-items/{atu_id}")
-def resolve_item(doc_id: str, atu_id: str, req: ResolveRequest, store: Store = Depends(get_store)):
-    doc = store.load_document(doc_id)
+def resolve_item(
+    doc_id: str,
+    atu_id: str,
+    req: ResolveRequest,
+    request: Request,
+    access=Depends(doc_access("edit")),
+):
+    ctx, doc = access
     for q in doc.questions:
         for atu in q.atus:
             if atu.id == atu_id:
@@ -127,6 +184,8 @@ def resolve_item(doc_id: str, atu_id: str, req: ResolveRequest, store: Store = D
                 atu.status = VerificationStatus.HUMAN_VERIFIED
                 doc.version += 1
                 store.save_document(doc)
+                audit(request, ctx, "document.review.resolve", "document", doc_id,
+                      {"atu_id": atu_id, "version": doc.version})
                 return {"ok": True}
     raise HTTPException(404, "atu not found")
 
@@ -136,11 +195,16 @@ class EditRequest(BaseModel):
 
 
 @router.post("/{doc_id}/edits")
-def edit(doc_id: str, req: EditRequest, store: Store = Depends(get_store)):
+def edit(
+    doc_id: str,
+    req: EditRequest,
+    request: Request,
+    access=Depends(doc_access("edit")),
+):
     from core.examdna.editing import apply_ops, summarize
     from jobs.runner import _gemini_provider
 
-    doc = store.load_document(doc_id)
+    ctx, doc = access
     provider = _gemini_provider()
     if provider is None or not hasattr(provider, "edit_ops"):
         return {
@@ -153,6 +217,8 @@ def edit(doc_id: str, req: EditRequest, store: Store = Depends(get_store)):
     result = apply_ops(doc, ops)
     if result["applied"]:
         store.save_document(doc)
+        audit(request, ctx, "document.edit", "document", doc_id,
+              {"instruction": req.instruction, "version": doc.version})
     return {
         "ok": bool(result["applied"]),
         "instruction": req.instruction,
@@ -166,8 +232,14 @@ class ExportRequest(BaseModel):
 
 
 @router.post("/{doc_id}/exports")
-def export(doc_id: str, req: ExportRequest, store: Store = Depends(get_store)):
-    doc = store.load_document(doc_id)
+def export(
+    doc_id: str,
+    req: ExportRequest,
+    request: Request,
+    access=Depends(doc_access("export")),
+    store: Store = Depends(get_store),
+):
+    ctx, doc = access
     out = store.export_dir(doc_id)
     fmt = req.format.lower()
 
@@ -187,12 +259,25 @@ def export(doc_id: str, req: ExportRequest, store: Store = Depends(get_store)):
             raise HTTPException(503, str(exc))
     else:
         raise HTTPException(400, f"unsupported format {req.format}")
+    audit(request, ctx, "document.export", "document", doc_id,
+          {"format": fmt, "version": doc.version})
     return {"file": path.name, "url": f"/api/documents/{doc_id}/files/{path.name}"}
 
 
 @router.get("/{doc_id}/files/{name}")
-def download(doc_id: str, name: str, store: Store = Depends(get_store)):
-    path = store.export_dir(doc_id) / name
-    if not path.exists() or path.parent != store.export_dir(doc_id):
+def download(
+    doc_id: str,
+    name: str,
+    request: Request,
+    access=Depends(doc_access("download")),
+    store: Store = Depends(get_store),
+):
+    """Artifact binary download — reviewers are denied by ROLE_ACTIONS."""
+    ctx, doc = access
+    safe = sanitize_filename(name)
+    base = store.export_dir(doc_id)
+    path = (base / safe).resolve()
+    if base.resolve() not in path.parents or not path.exists():
         raise HTTPException(404, "file not found")
-    return FileResponse(path, filename=name)
+    audit(request, ctx, "document.download", "document", doc_id, {"file": safe})
+    return FileResponse(path, filename=safe)

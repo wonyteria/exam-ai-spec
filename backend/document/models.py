@@ -188,6 +188,7 @@ class Document(BaseModel):
     """Source of Truth. HWP/PDF are render targets, never the truth."""
 
     id: str = Field(default_factory=lambda: new_id("doc"))
+    tenant_id: Optional[str] = None
     metadata: ExamMetadata = Field(default_factory=ExamMetadata)
     pages: list[Page] = Field(default_factory=list)
     questions: list[Question] = Field(default_factory=list)
