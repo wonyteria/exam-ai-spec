@@ -441,5 +441,10 @@
       "figure": null,
       "answer": "한 쌍의 대변 AD와 CF가 평행하고 길이가 같으므로 평행사변형"
     }
-  ]
+  ],
+  "provenance": {
+    "kind": "seeded_replay_fixture",
+    "note": "Seeded cache regression fixture — NOT an approved golden oracle. Contains 7 known-wrong answers (Q2,4,8,9,10,14,20), 29 rows vs required 31 nodes/28 scored leaves, 114 pts vs 100. Use only to detect pipeline drift; correctness baseline is reference_draft.json (F2 draft).",
+    "known_defects_doc": "reference_draft.json#seeded_expected_known_defects"
+  }
 }

@@ -35,7 +35,7 @@ def compare_golden(expected: dict[str, Any], actual: Document) -> dict[str, Any]
                 report["matched" if ok else "mismatched"] += 1
         report["questions"].append(entry)
 
-    report["regression"] = report["mismatched"] > 0
+    report["regression"] = report["mismatched"] > 0 or report["missing"] > 0
     return report
 
 

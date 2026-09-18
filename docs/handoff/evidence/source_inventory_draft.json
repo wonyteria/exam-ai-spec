@@ -1,0 +1,648 @@
+{
+  "status": "INDEPENDENT_REVIEW_DRAFT_REQUIRES_FINAL_HUMAN_SIGNOFF",
+  "scope": "Visible original photos and independent mathematics, not HWP output validation or platform accuracy measurement",
+  "school": "심원중학교",
+  "grade": 2,
+  "year": 2025,
+  "semester": 2,
+  "exam": "1차 지필평가 (중간고사)",
+  "date_printed": "2025-09-26",
+  "source_page_order": [
+    {
+      "logical_page": 1,
+      "file": "KakaoTalk_20250926_162511844_02.jpg",
+      "objective_numbers": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "essay_parents": []
+    },
+    {
+      "logical_page": 2,
+      "file": "KakaoTalk_20250926_162511844.jpg",
+      "objective_numbers": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "essay_parents": []
+    },
+    {
+      "logical_page": 3,
+      "file": "KakaoTalk_20250926_162511844_04.jpg",
+      "objective_numbers": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "essay_parents": []
+    },
+    {
+      "logical_page": 4,
+      "file": "KakaoTalk_20250926_162511844_03.jpg",
+      "objective_numbers": [
+        17,
+        18,
+        19,
+        20
+      ],
+      "essay_parents": [
+        "essay-1"
+      ]
+    },
+    {
+      "logical_page": 5,
+      "file": "KakaoTalk_20250926_162511844_01.jpg",
+      "objective_numbers": [],
+      "essay_parents": [
+        "essay-2",
+        "essay-3"
+      ]
+    }
+  ],
+  "counts": {
+    "source_pages": 5,
+    "objective": 20,
+    "essay_parents": 3,
+    "essay_children": 8,
+    "printed_top_level_questions": 23,
+    "scored_answer_units": 28,
+    "normalized_nodes_including_parents": 31,
+    "score_total": 100
+  },
+  "repository_baseline": {
+    "path": "snapshot/samples/golden_001/expected.json",
+    "objective_answer_mismatches": [
+      2,
+      4,
+      8,
+      9,
+      10,
+      14,
+      20
+    ],
+    "objective_match_count": 13,
+    "objective_count": 20,
+    "note": "13/20 is expected-key agreement with independent mathematics, not measured model performance",
+    "asymmetric_essay_node_count": 29
+  },
+  "questions": [
+    {
+      "id": "mcq-01",
+      "printed_label": "1",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 1,
+      "source_file": "KakaoTalk_20250926_162511844_02.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "④",
+      "answer_value": "70°",
+      "solution_concepts": "이등변삼각형 밑각과 내각합",
+      "repository_expected_answer": "④",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-02",
+      "printed_label": "2",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 1,
+      "source_file": "KakaoTalk_20250926_162511844_02.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "③",
+      "answer_value": "x=40,y=12",
+      "solution_concepts": "직각삼각형의 SAS 합동",
+      "repository_expected_answer": "⑤",
+      "expected_answer_matches": false,
+      "notes": [
+        "학생의 BAD=50도 표시는 계산상 참이어도 인쇄 도형 요소가 아님"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-03",
+      "printed_label": "3",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 1,
+      "source_file": "KakaoTalk_20250926_162511844_02.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "③",
+      "answer_value": "22cm",
+      "solution_concepts": "도형의 AE⊥BE 및 RHA 합동",
+      "repository_expected_answer": "③",
+      "expected_answer_matches": true,
+      "notes": [
+        "expected figure에 AE⊥BE 누락; 반드시 직각 마크를 보존"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-04",
+      "printed_label": "4",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 1,
+      "source_file": "KakaoTalk_20250926_162511844_02.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "③",
+      "answer_value": "ㄷ",
+      "solution_concepts": "직각삼각형 합동 충분조건; 두 변과 두 직각변 구별",
+      "repository_expected_answer": "④",
+      "expected_answer_matches": false,
+      "notes": [
+        "보기 상자 3문장이 expected에 누락",
+        "override가 두 변을 두 직각변으로 임의 해석"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-05",
+      "printed_label": "5",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 1,
+      "source_file": "KakaoTalk_20250926_162511844_02.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "9cm,10cm,15cm",
+      "solution_concepts": "피타고라스 관계",
+      "repository_expected_answer": "⑤",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-06",
+      "printed_label": "6",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 2,
+      "source_file": "KakaoTalk_20250926_162511844.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "①",
+      "answer_value": "18",
+      "solution_concepts": "RHS 합동과 피타고라스 정리",
+      "repository_expected_answer": "①",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-07",
+      "printed_label": "7",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 2,
+      "source_file": "KakaoTalk_20250926_162511844.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "①",
+      "answer_value": "직각삼각형의 외심은 빗변의 중점",
+      "solution_concepts": "직각삼각형 외심",
+      "repository_expected_answer": "①",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-08",
+      "printed_label": "8",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 2,
+      "source_file": "KakaoTalk_20250926_162511844.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "④",
+      "answer_value": "39",
+      "solution_concepts": "내심 각이등분선과 평행선의 엇각",
+      "repository_expected_answer": "①",
+      "expected_answer_matches": false,
+      "notes": [
+        "DB=DI,EC=IE는 유도 결과; 인쇄 여부 불확실한 눈금은 검토 필요"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-09",
+      "printed_label": "9",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 2,
+      "source_file": "KakaoTalk_20250926_162511844.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "①",
+      "answer_value": "100",
+      "solution_concepts": "OA 보조선과 세 이등변삼각형의 내각합",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": false,
+      "notes": [
+        "원주각 정리 직접 인용을 피한 중2 풀이 필요"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-10",
+      "printed_label": "10",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 2,
+      "source_file": "KakaoTalk_20250926_162511844.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "5cm",
+      "solution_concepts": "피타고라스 정리, 내심에서 세 변까지 거리, 삼각형 넓이 합",
+      "repository_expected_answer": "①",
+      "expected_answer_matches": false,
+      "notes": [
+        "학생 선택④4와 expected①1 모두 독립 계산에 불일치"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-11",
+      "printed_label": "11",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "②",
+      "answer_value": "-30",
+      "solution_concepts": "평행사변형의 대각과 이웃각",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": true,
+      "notes": [
+        "원본 인쇄 도형 없음; 학생 스케치 배제"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-12",
+      "printed_label": "12",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "②",
+      "answer_value": "8",
+      "solution_concepts": "평행사변형의 대변, 이등변삼각형, 정삼각형",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-13",
+      "printed_label": "13",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "AB∥DC,∠DAC=∠BCA",
+      "solution_concepts": "엇각과 두 쌍의 평행한 대변",
+      "repository_expected_answer": "⑤",
+      "expected_answer_matches": true,
+      "notes": [
+        "기본 사각형과 대각선 유지",
+        "평행 화살표/각 빗금/눈금의 학생 필기 가능성 높음; 모든 획 출처는 미확정"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-14",
+      "printed_label": "14",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "28°",
+      "solution_concepts": "ASA 합동과 직각삼각형의 빗변 중점인 외심",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": false,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-15",
+      "printed_label": "15",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "②",
+      "answer_value": "AC⊥BD",
+      "solution_concepts": "직사각형이 되는 충분조건",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": true,
+      "notes": [
+        "원본 인쇄 도형 없음; 학생 스케치 배제"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-16",
+      "printed_label": "16",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 3,
+      "source_file": "KakaoTalk_20250926_162511844_04.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "③",
+      "answer_value": "7cm",
+      "solution_concepts": "평행선과 중점, 수직이등분선 위 점의 성질",
+      "repository_expected_answer": "③",
+      "expected_answer_matches": true,
+      "notes": [
+        "학생 선택②6을 정답으로 채택하면 안 됨; expected③7은 타당"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-17",
+      "printed_label": "17",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "②",
+      "answer_value": "132°",
+      "solution_concepts": "마름모의 대각선과 두 수선",
+      "repository_expected_answer": "②",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-18",
+      "printed_label": "18",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "④",
+      "answer_value": "98cm²",
+      "solution_concepts": "정사각형의 대각선과 삼각형 넓이",
+      "repository_expected_answer": "④",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-19",
+      "printed_label": "19",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "정사각형의 두 쌍의 대각의 크기는 각각 같다",
+      "solution_concepts": "사각형의 기본 성질",
+      "repository_expected_answer": "⑤",
+      "expected_answer_matches": true,
+      "notes": [],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "mcq-20",
+      "printed_label": "20",
+      "parent_id": null,
+      "kind": "multiple_choice",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 5,
+      "include_in_score_sum": true,
+      "independently_derived_answer": "⑤",
+      "answer_value": "△EFD",
+      "solution_concepts": "평행선 사이 삼각형 높이, 중점과 넓이비",
+      "repository_expected_answer": "①",
+      "expected_answer_matches": false,
+      "notes": [
+        "색칠/해칭은 학생 필기 가능성 높음; expected 설명 그대로 재도형화 금지"
+      ],
+      "review_status": "mathematically_checked_from_visible_source"
+    },
+    {
+      "id": "essay-1",
+      "printed_label": "논술형 1",
+      "kind": "shared_stem",
+      "parent_id": null,
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 6,
+      "include_in_score_sum": false,
+      "shared_figure_id": "essay-1-figure",
+      "child_ids": [
+        "essay-1-1",
+        "essay-1-2"
+      ],
+      "answer_space": "Each child retains an individual blank writing region; shared stem/figure must remain linked."
+    },
+    {
+      "id": "essay-1-1",
+      "printed_label": "1-1",
+      "kind": "descriptive",
+      "parent_id": "essay-1",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 4,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-1-figure",
+      "independently_derived_answer": "RHS 합동; ∠DMB=∠EMC",
+      "required_reasoning": "BM=CM,DM=EM,두 직각을 명시하고 RHS 합동과 대응각 같음을 증명",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-1-2",
+      "printed_label": "1-2",
+      "kind": "descriptive",
+      "parent_id": "essay-1",
+      "source_page": 4,
+      "source_file": "KakaoTalk_20250926_162511844_03.jpg",
+      "points": 2,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-1-figure",
+      "independently_derived_answer": "76°",
+      "required_reasoning": "앞 문제에서 각B=C=52도; 내각합180도 사용",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-2",
+      "printed_label": "논술형 2",
+      "kind": "shared_stem",
+      "parent_id": null,
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 7,
+      "include_in_score_sum": false,
+      "shared_figure_id": "essay-2-figure",
+      "child_ids": [
+        "essay-2-1",
+        "essay-2-2",
+        "essay-2-3"
+      ],
+      "answer_space": "Each child retains an individual blank writing region; shared stem/figure must remain linked."
+    },
+    {
+      "id": "essay-2-1",
+      "printed_label": "2-1",
+      "kind": "descriptive",
+      "parent_id": "essay-2",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-2-figure",
+      "independently_derived_answer": "45°",
+      "required_reasoning": "IP=IQ=IR 및 접점 수선으로 이등변삼각형 각 관계 유도; 원주각/접현각 직접 인용 회피",
+      "requires_blank_writing_area": true,
+      "elementary_proof": "Connect IP,IQ,IR. Radii at contact points are perpendicular to AB,BC,AC. In quadrilateral PBIQ three angles are 90°, hence PIQ=90°. Set a=PRI,b=IRQ in the observed diagram. IP=IR and IQ=IR give PIR=180-2a and RIQ=180-2b. The angles around I sum to 360°, so (180-2a)+(180-2b)=270. Thus PRQ=a+b=45°. No inscribed-angle or tangent-chord theorem is invoked."
+    },
+    {
+      "id": "essay-2-2",
+      "printed_label": "2-2",
+      "kind": "descriptive",
+      "parent_id": "essay-2",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 2,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-2-figure",
+      "independently_derived_answer": "81°",
+      "required_reasoning": "직선 위 세 각의 합180도와 PRQ45도, 비3:2 사용",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-2-3",
+      "printed_label": "2-3",
+      "kind": "descriptive",
+      "parent_id": "essay-2",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 2,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-2-figure",
+      "independently_derived_answer": "18°",
+      "required_reasoning": "CI 공통,IQ=IR인 RHS 합동으로 CQ=CR 유도; 밑각81도",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-3",
+      "printed_label": "논술형 3",
+      "kind": "shared_stem",
+      "parent_id": null,
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 7,
+      "include_in_score_sum": false,
+      "shared_figure_id": "essay-3-figure",
+      "child_ids": [
+        "essay-3-1",
+        "essay-3-2",
+        "essay-3-3"
+      ],
+      "answer_space": "Each child retains an individual blank writing region; shared stem/figure must remain linked."
+    },
+    {
+      "id": "essay-3-1",
+      "printed_label": "3-1",
+      "kind": "descriptive",
+      "parent_id": "essay-3",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 3,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-3-figure",
+      "independently_derived_answer": "ASA 합동",
+      "required_reasoning": "DE=CE,맞꼭지각,평행선 엇각을 명시하고 ASA 조건 포함",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-3-2",
+      "printed_label": "3-2",
+      "kind": "descriptive",
+      "parent_id": "essay-3",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 2,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-3-figure",
+      "independently_derived_answer": "평행사변형",
+      "required_reasoning": "사각형 ACFD 종류 명시",
+      "requires_blank_writing_area": true
+    },
+    {
+      "id": "essay-3-3",
+      "printed_label": "3-3",
+      "kind": "descriptive",
+      "parent_id": "essay-3",
+      "source_page": 5,
+      "source_file": "KakaoTalk_20250926_162511844_01.jpg",
+      "points": 2,
+      "include_in_score_sum": true,
+      "shared_figure_id": "essay-3-figure",
+      "independently_derived_answer": "한 쌍의 대변 AD와 CF가 평행하고 길이가 같음",
+      "required_reasoning": "3-1 합동에서 AD=CF,기존 평행사변형에서 AD∥CF",
+      "requires_blank_writing_area": true
+    }
+  ],
+  "unresolved_source_visual_items": [
+    "Q13 finer diagram marks require a source enlargement/reviewer decision",
+    "Q20 hatching provenance requires reviewer decision",
+    "Exact handwriting/printed overlap masks have not been exhaustively produced"
+  ],
+  "layout_interpretation": {
+    "proposed": "2 columns, 2 question blocks per column, row starts aligned",
+    "status": "Needs HWP template comparison; photos themselves use variable block counts",
+    "essay_exception": "Preserve shared stems/figures, child labels, and blank writing region heights"
+  },
+  "mandatory_export_constraints": [
+    "Every answer unit has an endnote with answer and full grade-appropriate reasoning",
+    "Numbers in equation objects use requested it style; units use roman; equations 11pt",
+    "Do not use student answers or existing expected answers as authority",
+    "Final spelling and equation check must operate on the rendered/exported artifact"
+  ],
+  "reference_answer_cross_check": {
+    "source": "Parent agent HWP extraction: real-sample/reference-inspection/endnotes-semantic.txt",
+    "objective_answers": "④③③③⑤①①④①⑤②②⑤⑤②③②④⑤⑤",
+    "match_to_independent_derivation": 20,
+    "scope": "Answers only; does not validate HWP body, solution grade suitability, or formatting"
+  }
+}

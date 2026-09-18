@@ -1,0 +1,91 @@
+{
+  "repository": "D:\\플랫폼\\exam_ai_spec\\project",
+  "audit_baseline": "0c1fb5d",
+  "isolation": "synthetic document store; fake providers; mocked upload thread; no Gemini calls",
+  "data_directory": "D:\\Codex\\exam-ai-audit-20260919\\backend-repro-runs\\3d1b73c16fae418880aad9a66700f3c1",
+  "case_count": 8,
+  "reproduced_count": 8,
+  "results": [
+    {
+      "case": "B01_review_canonical_mismatch",
+      "defect_reproduced": true,
+      "actual": {
+        "body": "old",
+        "atu_value": "corrected",
+        "status": "NEEDS_REVIEW",
+        "gate": {
+          "text_conflict": 1
+        }
+      }
+    },
+    {
+      "case": "B02_edit_stale_verification",
+      "defect_reproduced": true,
+      "actual": {
+        "body": "1+2?",
+        "answer": 2,
+        "status": "VERIFIED_FINAL"
+      }
+    },
+    {
+      "case": "B03_label_position_collision",
+      "defect_reproduced": true,
+      "actual": {
+        "6": "edited one",
+        "1": "one"
+      }
+    },
+    {
+      "case": "B04_ocr_disagreement",
+      "defect_reproduced": true,
+      "actual": {
+        "body": [
+          "x=2",
+          "x=3"
+        ],
+        "statuses": [
+          "AUTO_VERIFIED",
+          "AUTO_VERIFIED"
+        ],
+        "conflicts": 0
+      }
+    },
+    {
+      "case": "B05_one_run_solver",
+      "defect_reproduced": true,
+      "actual": {
+        "answer": 2,
+        "flags": [],
+        "fallback_calls": 0,
+        "gate_passed": true
+      }
+    },
+    {
+      "case": "B06_upload_path_containment",
+      "defect_reproduced": true,
+      "actual": {
+        "escaped_file_exists": true,
+        "outside_job_uploads": true,
+        "inside_audit_directory": true,
+        "file": "D:\\Codex\\exam-ai-audit-20260919\\backend-repro-runs\\3d1b73c16fae418880aad9a66700f3c1\\data\\jobs\\escaped.txt"
+      }
+    },
+    {
+      "case": "B07_upload_overwrite",
+      "defect_reproduced": true,
+      "actual": {
+        "submitted_count": 2,
+        "stored_count": 1,
+        "retained_content": "second"
+      }
+    },
+    {
+      "case": "B10_missing_body_adequate",
+      "defect_reproduced": true,
+      "actual": {
+        "body_missing": true,
+        "adequate": true
+      }
+    }
+  ]
+}

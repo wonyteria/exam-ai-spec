@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { API, getReviewItems, resolveItem, ReviewItem } from "@/lib/api";
 
 interface LogicFlagGroup {
@@ -46,22 +46,25 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await getReviewItems(id);
-      setItems(data.items);
-      setFlags(data.logic_flags);
-      setMissingNumbers(data.missing_numbers ?? []);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoaded(true);
-    }
-  }, [id]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await getReviewItems(id);
+        if (cancelled) return;
+        setItems(data.items);
+        setFlags(data.logic_flags);
+        setMissingNumbers(data.missing_numbers ?? []);
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const resolve = async (atuId: string) => {
     const value = values[atuId];

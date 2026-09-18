@@ -1,0 +1,57 @@
+{
+  "sample": "golden_001 (심원중 기준 시험)",
+  "status": "F2_DRAFT_PENDING_INDEPENDENT_REVIEW",
+  "provenance": {
+    "kind": "independent_reference_draft",
+    "note": "사용자 확정 명세(01_PRODUCT_REQUIREMENTS §7)의 독립 정답·구조 기준. 기존 expected.json의 seeded 오류를 수정한 대조 기준 초안이다. 2인 독립 검토 전까지 모델 입력·평가 오라클로 사용 금지 — 회귀 비교용 기준 데이터 초안.",
+    "seeded_baseline": "expected.json (seeded replay fixture — known defects below)",
+    "must_not_feed_model_input": true,
+    "review_required": "2인 독립 검토 + 불일치 조정 후 status를 APPROVED_GOLDEN으로 승격"
+  },
+  "structure": {
+    "major_questions": 23,
+    "scored_leaves": 28,
+    "total_nodes_including_parents": 31,
+    "total_points": 100,
+    "mcq_count": 20,
+    "mcq_choice_count": 100,
+    "q4_separate_statement_box_items": 3,
+    "essay_parents": 3,
+    "essay_children": 8,
+    "page_logical_order": ["_02", "기본", "_04", "_03", "_01"],
+    "note": "이 수치는 심원중 fixture 전용이며 다른 시험에 하드코딩하지 않는다"
+  },
+  "mcq_independent_answers": {
+    "1": "④", "2": "③", "3": "③", "4": "③", "5": "⑤",
+    "6": "①", "7": "①", "8": "④", "9": "①", "10": "⑤",
+    "11": "②", "12": "②", "13": "⑤", "14": "⑤", "15": "②",
+    "16": "③", "17": "②", "18": "④", "19": "⑤", "20": "⑤"
+  },
+  "seeded_expected_known_defects": {
+    "wrong_answers": {
+      "2": {"seeded": "⑤", "correct": "③"},
+      "4": {"seeded": "④", "correct": "③"},
+      "8": {"seeded": "①", "correct": "④"},
+      "9": {"seeded": "②", "correct": "①"},
+      "10": {"seeded": "①", "correct": "⑤"},
+      "14": {"seeded": "②", "correct": "⑤"},
+      "20": {"seeded": "①", "correct": "⑤"}
+    },
+    "student_answers_not_printed": {
+      "10": "학생 표시 ④는 오답 — 정답 후보로 채택 금지",
+      "16": "학생 표시 ②는 오답 — 정답 후보로 채택 금지"
+    },
+    "row_count": {"seeded": 29, "required_nodes": 31, "required_scored_leaves": 28},
+    "point_total": {"seeded": 114, "required": 100},
+    "structure_note": "seeded expected는 논술 자식 8개 중 일부와 점수 체계가 누락/불일치 — 문항 수 합격 기준으로 사용 금지"
+  },
+  "handwriting_removal_check_regions": [
+    "6번 DC/직각", "9번 AC", "12번 AD·BC", "14번 B-F-E",
+    "17번 마름모/수선", "18번 대각선", "4번 보기 상자",
+    "3번 AE⊥BE 인쇄 조건 보존", "11번·15번 학생 보조 스케치 제외"
+  ],
+  "essay_answers": {
+    "note": "논술 답안은 독립 검수 대상 — seeded 값을 그대로 승격하지 않음",
+    "pending_review": true
+  }
+}

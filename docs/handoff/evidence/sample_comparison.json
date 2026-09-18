@@ -1,0 +1,804 @@
+{
+  "baseline_commit": "0c1fb5dc8223d52889ca676bed13ad2e7d93fa4a",
+  "interpretation": "cached benchmark consistency, not fresh model accuracy",
+  "objective_answer_comparison": [
+    {
+      "number": 1,
+      "source_independent_and_hwp_answer": "④",
+      "cached_answer": "④",
+      "match": true,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 2,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "⑤",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 3,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "③",
+      "match": true,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 4,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "④",
+      "match": false,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 0
+    },
+    {
+      "number": 5,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "⑤",
+      "match": true,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 0
+    },
+    {
+      "number": 6,
+      "source_independent_and_hwp_answer": "①",
+      "cached_answer": "①",
+      "match": true,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 1
+    },
+    {
+      "number": 7,
+      "source_independent_and_hwp_answer": "①",
+      "cached_answer": "①",
+      "match": true,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 0
+    },
+    {
+      "number": 8,
+      "source_independent_and_hwp_answer": "④",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 9,
+      "source_independent_and_hwp_answer": "①",
+      "cached_answer": "②",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 10,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 11,
+      "source_independent_and_hwp_answer": "②",
+      "cached_answer": "②",
+      "match": true,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 1
+    },
+    {
+      "number": 12,
+      "source_independent_and_hwp_answer": "②",
+      "cached_answer": "②",
+      "match": true,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 13,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "⑤",
+      "match": true,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 14,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "②",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 15,
+      "source_independent_and_hwp_answer": "②",
+      "cached_answer": "②",
+      "match": true,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 16,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "③",
+      "match": true,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 17,
+      "source_independent_and_hwp_answer": "②",
+      "cached_answer": "②",
+      "match": true,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 18,
+      "source_independent_and_hwp_answer": "④",
+      "cached_answer": "④",
+      "match": true,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 19,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "⑤",
+      "match": true,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 0
+    },
+    {
+      "number": 20,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    }
+  ],
+  "matches": 13,
+  "mismatches": [
+    {
+      "number": 2,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "⑤",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 4,
+      "source_independent_and_hwp_answer": "③",
+      "cached_answer": "④",
+      "match": false,
+      "choice_count": 5,
+      "points": 4,
+      "figure_description_count": 0
+    },
+    {
+      "number": 8,
+      "source_independent_and_hwp_answer": "④",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 9,
+      "source_independent_and_hwp_answer": "①",
+      "cached_answer": "②",
+      "match": false,
+      "choice_count": 5,
+      "points": 3,
+      "figure_description_count": 1
+    },
+    {
+      "number": 10,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 14,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "②",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    },
+    {
+      "number": 20,
+      "source_independent_and_hwp_answer": "⑤",
+      "cached_answer": "①",
+      "match": false,
+      "choice_count": 5,
+      "points": 5,
+      "figure_description_count": 1
+    }
+  ],
+  "reference_render_layout": [
+    {
+      "page": 1,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "1.",
+          "x0": 47.854065,
+          "top": 116.67832695800007,
+          "x1": 59.457416445,
+          "bottom": 128.90496495800005
+        },
+        {
+          "text": "3.",
+          "x0": 308.113015,
+          "top": 117.87701695800013,
+          "x1": 319.716366445,
+          "bottom": 130.1036549580001
+        },
+        {
+          "text": "1.",
+          "x0": 59.48776,
+          "top": 126.42643364499997,
+          "x1": 59.960004062500005,
+          "bottom": 127.02577864500006
+        },
+        {
+          "text": "3.",
+          "x0": 319.74671,
+          "top": 127.74499264499991,
+          "x1": 320.2189540625,
+          "bottom": 128.344337645
+        },
+        {
+          "text": "2.",
+          "x0": 47.854065,
+          "top": 421.02571795800003,
+          "x1": 59.457416445,
+          "bottom": 433.252355958
+        },
+        {
+          "text": "4.",
+          "x0": 308.113015,
+          "top": 425.820477958,
+          "x1": 319.716366445,
+          "bottom": 438.047115958
+        },
+        {
+          "text": "2.",
+          "x0": 59.48776,
+          "top": 430.89369364500004,
+          "x1": 59.960004062500005,
+          "bottom": 431.493038645
+        },
+        {
+          "text": "4.",
+          "x0": 319.74671,
+          "top": 435.68845364500004,
+          "x1": 320.2189540625,
+          "bottom": 436.287798645
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "5.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 59.457416445,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "7.",
+          "x0": 308.113015,
+          "top": 69.21020295800008,
+          "x1": 319.716366445,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "5.",
+          "x0": 59.48776,
+          "top": 78.95830964499999,
+          "x1": 59.960004062500005,
+          "bottom": 79.55765464500007
+        },
+        {
+          "text": "7.",
+          "x0": 319.74671,
+          "top": 78.95830964499999,
+          "x1": 320.2189540625,
+          "bottom": 79.55765464500007
+        },
+        {
+          "text": "6.",
+          "x0": 47.854065,
+          "top": 398.370476958,
+          "x1": 59.457416445,
+          "bottom": 410.59711495799996
+        },
+        {
+          "text": "8.",
+          "x0": 308.113015,
+          "top": 397.531393958,
+          "x1": 319.716366445,
+          "bottom": 409.758031958
+        },
+        {
+          "text": "6.",
+          "x0": 59.48776,
+          "top": 408.238452645,
+          "x1": 59.960004062500005,
+          "bottom": 408.83779764499997
+        },
+        {
+          "text": "8.",
+          "x0": 319.74671,
+          "top": 407.39936964500004,
+          "x1": 320.2189540625,
+          "bottom": 407.998714645
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "9.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 59.457416445,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "11.",
+          "x0": 308.113015,
+          "top": 69.21020295800008,
+          "x1": 327.512693146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "9.",
+          "x0": 59.48776,
+          "top": 78.95830964499999,
+          "x1": 59.960004062500005,
+          "bottom": 79.55765464500007
+        },
+        {
+          "text": "10.",
+          "x0": 47.854065,
+          "top": 400.408249958,
+          "x1": 67.253743146,
+          "bottom": 412.634887958
+        },
+        {
+          "text": "12.",
+          "x0": 308.113015,
+          "top": 395.134013958,
+          "x1": 327.512693146,
+          "bottom": 407.360651958
+        },
+        {
+          "text": "10.",
+          "x0": 67.1636,
+          "top": 410.156356645,
+          "x1": 67.99564906250001,
+          "bottom": 410.755701645
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "13.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 67.253743146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "15.",
+          "x0": 308.113015,
+          "top": 69.21020295800008,
+          "x1": 327.512693146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "13.",
+          "x0": 67.1636,
+          "top": 78.95830964499999,
+          "x1": 67.99564906250001,
+          "bottom": 79.55765464500007
+        },
+        {
+          "text": "14.",
+          "x0": 47.854065,
+          "top": 365.885977958,
+          "x1": 67.253743146,
+          "bottom": 378.112615958
+        },
+        {
+          "text": "16.",
+          "x0": 308.113015,
+          "top": 364.207811958,
+          "x1": 327.512693146,
+          "bottom": 376.43444995799996
+        },
+        {
+          "text": "14.",
+          "x0": 67.1636,
+          "top": 375.63408464500003,
+          "x1": 67.99564906250001,
+          "bottom": 376.233429645
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "17.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 67.253743146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "19.",
+          "x0": 308.113015,
+          "top": 69.21020295800008,
+          "x1": 327.512693146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "17.",
+          "x0": 67.1636,
+          "top": 78.95830964499999,
+          "x1": 67.99564906250001,
+          "bottom": 79.55765464500007
+        },
+        {
+          "text": "18.",
+          "x0": 47.854065,
+          "top": 398.61021495800003,
+          "x1": 67.253743146,
+          "bottom": 410.836852958
+        },
+        {
+          "text": "20.",
+          "x0": 308.113015,
+          "top": 400.048642958,
+          "x1": 327.512693146,
+          "bottom": 412.275280958
+        },
+        {
+          "text": "18.",
+          "x0": 67.1636,
+          "top": 408.47819064500004,
+          "x1": 67.99564906250001,
+          "bottom": 409.077535645
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "21.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 67.253743146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "22.",
+          "x0": 308.113015,
+          "top": 69.21020295800008,
+          "x1": 327.512693146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "21.",
+          "x0": 67.1636,
+          "top": 78.95830964499999,
+          "x1": 67.99564906250001,
+          "bottom": 79.55765464500007
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "23.",
+          "x0": 47.854065,
+          "top": 69.21020295800008,
+          "x1": 67.253743146,
+          "bottom": 81.43684095800006
+        },
+        {
+          "text": "23.",
+          "x0": 67.1636,
+          "top": 78.95830964499999,
+          "x1": 67.99564906250001,
+          "bottom": 79.55765464500007
+        }
+      ]
+    },
+    {
+      "page": 8,
+      "width": 595,
+      "height": 841,
+      "number_markers": [
+        {
+          "text": "1.",
+          "x0": 46.174975,
+          "top": 91.29079197200008,
+          "x1": 53.345360936,
+          "bottom": 99.44188397200003
+        },
+        {
+          "text": "2.",
+          "x0": 46.174975,
+          "top": 112.50760497200008,
+          "x1": 53.345360936,
+          "bottom": 120.65869697200003
+        },
+        {
+          "text": "3.",
+          "x0": 46.174975,
+          "top": 133.60454897199998,
+          "x1": 53.345360936,
+          "bottom": 141.75564097199992
+        },
+        {
+          "text": "23.",
+          "x0": 306.433925,
+          "top": 144.51262797200002,
+          "x1": 318.40142309199996,
+          "bottom": 152.66371997199997
+        },
+        {
+          "text": "4.",
+          "x0": 46.174975,
+          "top": 154.82136197199998,
+          "x1": 53.345360936,
+          "bottom": 162.97245397199993
+        },
+        {
+          "text": "5.",
+          "x0": 46.174975,
+          "top": 176.03817497199998,
+          "x1": 53.345360936,
+          "bottom": 184.18926697199993
+        },
+        {
+          "text": "6.",
+          "x0": 46.174975,
+          "top": 197.25498797199998,
+          "x1": 53.345360936,
+          "bottom": 205.40607997199993
+        },
+        {
+          "text": "7.",
+          "x0": 46.174975,
+          "top": 218.47180097199998,
+          "x1": 53.345360936,
+          "bottom": 226.62289297199993
+        },
+        {
+          "text": "8.",
+          "x0": 46.174975,
+          "top": 239.68861397199998,
+          "x1": 53.345360936,
+          "bottom": 247.83970597199993
+        },
+        {
+          "text": "9.",
+          "x0": 46.174975,
+          "top": 260.905426972,
+          "x1": 53.345360936,
+          "bottom": 269.05651897199994
+        },
+        {
+          "text": "10.",
+          "x0": 46.174975,
+          "top": 282.122239972,
+          "x1": 58.022586066,
+          "bottom": 290.27333197199994
+        },
+        {
+          "text": "11.",
+          "x0": 46.174975,
+          "top": 303.339052972,
+          "x1": 58.022586066,
+          "bottom": 311.49014497199994
+        },
+        {
+          "text": "12.",
+          "x0": 46.174975,
+          "top": 324.555865972,
+          "x1": 58.022586066,
+          "bottom": 332.706957972
+        },
+        {
+          "text": "13.",
+          "x0": 46.174975,
+          "top": 345.772678972,
+          "x1": 58.022586066,
+          "bottom": 353.923770972
+        },
+        {
+          "text": "14.",
+          "x0": 46.174975,
+          "top": 366.989491972,
+          "x1": 58.022586066,
+          "bottom": 375.140583972
+        },
+        {
+          "text": "15.",
+          "x0": 46.174975,
+          "top": 388.206304972,
+          "x1": 58.022586066,
+          "bottom": 396.357396972
+        },
+        {
+          "text": "16.",
+          "x0": 46.174975,
+          "top": 409.423117972,
+          "x1": 58.022586066,
+          "bottom": 417.574209972
+        },
+        {
+          "text": "17.",
+          "x0": 46.174975,
+          "top": 430.639930972,
+          "x1": 58.022586066,
+          "bottom": 438.791022972
+        },
+        {
+          "text": "18.",
+          "x0": 46.174975,
+          "top": 451.856743972,
+          "x1": 58.022586066,
+          "bottom": 460.007835972
+        },
+        {
+          "text": "19.",
+          "x0": 46.174975,
+          "top": 473.073556972,
+          "x1": 58.022586066,
+          "bottom": 481.224648972
+        },
+        {
+          "text": "20.",
+          "x0": 46.174975,
+          "top": 494.290369972,
+          "x1": 58.022586066,
+          "bottom": 502.441461972
+        },
+        {
+          "text": "21.",
+          "x0": 46.174975,
+          "top": 515.3873139719999,
+          "x1": 58.022586066,
+          "bottom": 523.538405972
+        },
+        {
+          "text": "22.",
+          "x0": 46.174975,
+          "top": 679.0084989720001,
+          "x1": 58.022586066,
+          "bottom": 687.159590972
+        }
+      ]
+    }
+  ],
+  "cached_document_state": {
+    "status": "VERIFIED_FINAL",
+    "gate": {
+      "text_conflict": 0,
+      "number_conflict": 0,
+      "math_conflict": 0,
+      "choice_conflict": 0,
+      "figure_conflict": 0,
+      "missing_condition": 0,
+      "missing_object": 0,
+      "logic_conflict": 0,
+      "unsolvable_question": 0,
+      "ambiguous_answer": 0,
+      "unverified": 0,
+      "hwp_mismatch": 0,
+      "document_empty": false,
+      "missing_numbers": []
+    }
+  },
+  "cached_metadata": {
+    "school": "",
+    "year": null,
+    "grade": "",
+    "semester": null,
+    "exam_type": "",
+    "subject": "mathematics"
+  },
+  "cached_points_sum_naive": 114,
+  "cached_choice_count": 100,
+  "cached_question_labels": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "논술형 1",
+    "논술형 2",
+    "2-1",
+    "2-2",
+    "2-3",
+    "논술형 3",
+    "3-1",
+    "3-2",
+    "3-3"
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "package": "ExamDNA Devin final implementation handoff",
+  "version": "1.2",
+  "created_date": "2026-09-19",
+  "baseline_commit": "0c1fb5dc8223d52889ca676bed13ad2e7d93fa4a",
+  "scope": "Multi-academy web-only, central AI/HWP, Codex subscription dev/QA only",
+  "files": [
+    {
+      "path": "START_HERE.md",
+      "bytes": 6904,
+      "sha256": "f94f01be8bcca83d8194d3fb08b67d75122796254ab03d15407825db657deac4"
+    },
+    {
+      "path": "DEVIN_START_PROMPT.md",
+      "bytes": 11529,
+      "sha256": "55285b8655cea2f25b206b362b02cf93a44ccacff3e21c2fc1f06decbb03db60"
+    },
+    {
+      "path": "REVIEW_VERDICT.md",
+      "bytes": 4725,
+      "sha256": "4ffe31f959ecf381ed802699c1fb6a6088767f195b3389682cc4b3522f094a0c"
+    },
+    {
+      "path": "01_PRODUCT_REQUIREMENTS.md",
+      "bytes": 28494,
+      "sha256": "9fdea8cf5f06fe29716edbac9789d60a81d8db24257f940b1d15da2f3032f51c"
+    },
+    {
+      "path": "02_ARCHITECTURE_CONTRACTS.md",
+      "bytes": 65414,
+      "sha256": "a5c7d09372b7d52d28e7630c6f33d86511e9cb973d79b96bfd880f401ec510d2"
+    },
+    {
+      "path": "03_PAGE_UX_SPEC.md",
+      "bytes": 50432,
+      "sha256": "f2ad68369572efce97427eaeba2e7071b8d73991cdaab02d1dc6847c9eaed6ea"
+    },
+    {
+      "path": "04_ACCEPTANCE_TEST_PLAN.md",
+      "bytes": 48753,
+      "sha256": "7d16146d547845e11d8cd2fa377fee876bf29d27254c8f61061a84d5946b03f0"
+    },
+    {
+      "path": "05_DELIVERY_PLAN.md",
+      "bytes": 17389,
+      "sha256": "51dc5d3dd18ac5c0e38e095fe05dc95baa08f43c32e7ae53012c2d69872e54a2"
+    },
+    {
+      "path": "06_AI_COST_AND_OPERATIONS.md",
+      "bytes": 9968,
+      "sha256": "59782cb64c31e4fef16dc6d7b7ebbc02f5f519f712079fb09d0e5a667341aeaf"
+    },
+    {
+      "path": "07_DECISIONS_AND_RELEASE_GATES.md",
+      "bytes": 9385,
+      "sha256": "efe1b8d75dafef1188a061a4e552eab5a1de3666dca1f4b487fcbc2e83a08d34"
+    },
+    {
+      "path": "08_CORPUS_AND_CONTINUOUS_TESTING.md",
+      "bytes": 8723,
+      "sha256": "5ef1563c38fd57fa97308acf2cfb86e9076a510965ec2e9b1440eeb2bb06b301"
+    },
+    {
+      "path": "REQUIREMENT_INDEX.json",
+      "bytes": 2218,
+      "sha256": "9793f71f56114543938b86fa69fefea0a8e4b41116ee668ce0aee20a3f54a57a"
+    },
+    {
+      "path": "TRACEABILITY.csv",
+      "bytes": 23258,
+      "sha256": "2fced9f36c7ff83a4063117b7f36e046b8a8a24b1f25bafe3c0dd47ad7cfe1c2"
+    },
+    {
+      "path": "BACKLOG.csv",
+      "bytes": 2314,
+      "sha256": "2c79a9fc55083554104aec96196d343db8f98718008f80218c6472162956b01d"
+    },
+    {
+      "path": "ACCEPTANCE_RESULTS_TEMPLATE.csv",
+      "bytes": 6118,
+      "sha256": "a19c21e65725feef6165f704b8eb3ed0c72520111c6cdcb2c4f5066add8f498b"
+    },
+    {
+      "path": "evidence/backend_reproduction_results.json",
+      "bytes": 2303,
+      "sha256": "8c3b0b6f506b96ad20a9131a10f847325c8464a52cbeecf424d247675abb13d4"
+    },
+    {
+      "path": "evidence/BASELINE_FINDINGS.md",
+      "bytes": 13222,
+      "sha256": "61b46a4bd94e2cb33bfff0ca391ce54db3ac7169ee4e87b8607b8e3a7de667b6"
+    },
+    {
+      "path": "evidence/CORPUS_SOURCE_REGISTRY.json",
+      "bytes": 7114,
+      "sha256": "5ab534ef9101a0edfbfdc2038b8c46e85b02ca638f2faa9aa35b2ed4104f9bd7"
+    },
+    {
+      "path": "evidence/export_reproduction_results.json",
+      "bytes": 1653,
+      "sha256": "376f94fd113ef44fa9896debc322a2fa08616ff09cd1ef7e2472ebad691bd34f"
+    },
+    {
+      "path": "evidence/RESTRICTED_DATA_MANIFEST.md",
+      "bytes": 1908,
+      "sha256": "ce865f6dcfed2d778482782356d80e1ee1d659c2c72e06c29821eb6727395bb3"
+    },
+    {
+      "path": "evidence/sample_comparison.json",
+      "bytes": 19584,
+      "sha256": "8f38bac82d3960a022f63705b12cfb9c82b08dbf00f47e6f134ad08ffd5176a1"
+    },
+    {
+      "path": "evidence/source_inventory_draft.json",
+      "bytes": 22857,
+      "sha256": "7c6af99d1dd8d335d97dcc27e7f96335757f2d0aa15a365937ef82c12f60beae"
+    },
+    {
+      "path": "PACKAGE_VALIDATION.json",
+      "bytes": 686,
+      "sha256": "756d1da8813fe142502f270b03c4575a3063c1400266f3dfdbb3bd0e6108a549"
+    }
+  ]
+}

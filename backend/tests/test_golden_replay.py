@@ -7,12 +7,11 @@ from pathlib import Path
 import pytest
 
 import jobs.runner as runner
-import providers.gemini.provider as gp
 from core.examdna import Providers
 from document.models import Document
 from jobs.models import Job, JobState
 from jobs.runner import run_pipeline
-from providers.gemini.provider import GeminiProvider
+from tests.golden.replay import CacheReplayProvider
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples" / "golden_001"
 
@@ -23,17 +22,15 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture()
 def replay_providers(monkeypatch):
-    """Real GeminiProvider backed by the golden response cache — deterministic,
-    offline, and any cache miss fails loudly (fixture drift detection)."""
-    monkeypatch.setattr(gp, "CACHE_DIR", SAMPLES / "cache")
-    monkeypatch.setattr(gp, "MIN_INTERVAL", 0.0)
-    monkeypatch.setenv("GEMINI_API_KEY", "golden-replay")
+    """CacheReplayProvider backed by the golden response cache — deterministic,
+    offline, no SDK import, and any cache miss raises CacheMiss (A34)."""
+    provider = CacheReplayProvider(SAMPLES / "cache")
     providers = Providers(
-        ocr=[GeminiProvider("gemini-3.1-flash-lite")],
-        vision=[GeminiProvider("gemini-3.1-flash-lite")],
+        ocr=[provider],
+        vision=[provider],
         math_ocr=[],
         reasoning=[],
-        solver=[GeminiProvider("gemini-3.1-flash-lite")],
+        solver=[provider],
     )
     monkeypatch.setattr(runner, "default_providers", lambda: providers)
 

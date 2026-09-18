@@ -1,0 +1,69 @@
+{
+  "pdf": {
+    "hangul_replaced": true,
+    "choice_present": false,
+    "equation_present": false,
+    "figure_present": false,
+    "one_page": true
+  },
+  "hwpx": {
+    "printed_label_present": false,
+    "position_index_printed": true,
+    "figure_present": false,
+    "equation_object_present": false,
+    "raw_latex_present": true,
+    "asset_entries": []
+  },
+  "web": {
+    "printed_label_present": false,
+    "figure_present": false,
+    "non_numeric_li_value": true
+  },
+  "gate_without_atus_or_proof": {
+    "status": "VERIFIED_FINAL",
+    "gate": {
+      "text_conflict": 0,
+      "number_conflict": 0,
+      "math_conflict": 0,
+      "choice_conflict": 0,
+      "figure_conflict": 0,
+      "missing_condition": 0,
+      "missing_object": 0,
+      "logic_conflict": 0,
+      "unsolvable_question": 0,
+      "ambiguous_answer": 0,
+      "unverified": 0,
+      "hwp_mismatch": 0,
+      "document_empty": false,
+      "missing_numbers": []
+    }
+  },
+  "proof_without_output_file": {
+    "returned_mismatches": 0,
+    "output_exists": false
+  },
+  "stale_hwp_after_edit": {
+    "converted_new_content": false,
+    "response": {
+      "file": "exam.hwp",
+      "url": "/api/documents/doc_b793e6251670/files/exam.hwp"
+    }
+  },
+  "unverified_pdf_export": {
+    "file": "exam.pdf",
+    "url": "/api/documents/doc_b793e6251670/files/exam.pdf"
+  },
+  "missing_golden_question": {
+    "questions": [
+      {
+        "number": 1,
+        "fields": {},
+        "status": "missing"
+      }
+    ],
+    "matched": 0,
+    "mismatched": 0,
+    "missing": 1,
+    "regression": false
+  }
+}

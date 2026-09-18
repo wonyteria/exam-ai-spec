@@ -1,0 +1,19 @@
+{
+  "product_implementation_claimed": false,
+  "product_tests_executed_this_task": false,
+  "requirements": 28,
+  "acceptance_tests": 60,
+  "work_packages": 12,
+  "audit_items": 48,
+  "trace_rows": 136,
+  "all_requirements_have_tests": true,
+  "all_audit_ids_mapped": true,
+  "all_test_refs_exist": true,
+  "portable_markdown_links_valid": true,
+  "private_original_images_or_hwp_included": false,
+  "secrets_included": false,
+  "handoff_review": "PASS_CORE_CONTRACTS_01_TO_07",
+  "implementation_status": "NOT_IMPLEMENTED_BY_THIS_TASK",
+  "all_acceptance_results_initially_not_run": true,
+  "corpus_extension": "SOURCE_INTAKE_AND_TEST_PROTOCOL_NOT_MODEL_VALIDATION"
+}
