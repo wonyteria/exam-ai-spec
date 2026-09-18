@@ -166,6 +166,19 @@ class Page(BaseModel):
     height: Optional[float] = None
     clean_uri: Optional[str] = None
     trace_mask_uri: Optional[str] = None
+    # Source linkage (WP03): upload order and exam order are separate.
+    source_asset_id: Optional[str] = None
+    source_page_id: Optional[str] = None
+    pdf_page_index: Optional[int] = None
+    sha256: Optional[str] = None
+    original_name: Optional[str] = None
+    # Coordinate transform applied to derive working pixels from the
+    # original (EXIF orientation, crop). Anchors stay in original pixels;
+    # clean/crop coordinates must be invertible (02 SourceAnchor).
+    transform: Optional[dict[str, Any]] = None
+    # Regions where trace removal could not be separated from print with
+    # confidence — kept for original comparison / human review (S01).
+    uncertain_regions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ExamMetadata(BaseModel):

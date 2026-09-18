@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import io
+import re
 import threading
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from PIL import Image
 
-from canonical.models import JobV2
+from canonical.models import JobV2, SourceAsset, SourceManifest, SourcePage
 from canonical.store import CanonicalStore
 from canonical.service import MutationService
 from document.models import Document, Page, PageImage
@@ -20,6 +24,116 @@ router = APIRouter(prefix="/api", tags=["uploads"])
 
 MAX_FILE_BYTES = 50 * 1024 * 1024  # ADR baseline: 50 MiB per file
 MAX_FILES = 50
+MAX_PIXELS = 80_000_000  # decompression-bomb guard (~80MP per page)
+MAX_PDF_PAGES = 100
+PDF_RENDER_SCALE = 200 / 72  # 200 dpi rasterization baseline
+
+Image.MAX_IMAGE_PIXELS = None  # we enforce our own explicit cap
+
+
+def _sniff_mime(data: bytes, filename: str) -> str:
+    """Magic-byte sniffing — the declared Content-Type and extension are
+    untrusted. Returns a canonical mime or raises 422."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"BM"):
+        return "image/bmp"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:5] == b"%PDF-":
+        return "application/pdf"
+    raise HTTPException(
+        422,
+        {
+            "error": {
+                "code": "UNSUPPORTED_TYPE",
+                "message": f"unsupported or unrecognized file type: {filename}",
+                "details": {},
+                "retryable": False,
+            }
+        },
+    )
+
+
+def _validate_image(data: bytes, filename: str) -> tuple[int, int]:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im.verify()
+        with Image.open(io.BytesIO(data)) as im:
+            w, h = im.size
+    except Exception:
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "CORRUPT_FILE",
+                    "message": f"image file is corrupt or unreadable: {filename}",
+                    "details": {},
+                    "retryable": True,
+                }
+            },
+        )
+    if w * h > MAX_PIXELS:
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "IMAGE_TOO_LARGE",
+                    "message": f"image exceeds {MAX_PIXELS // 1_000_000}MP: {filename} ({w}x{h})",
+                    "details": {"width": w, "height": h},
+                    "retryable": False,
+                }
+            },
+        )
+    return w, h
+
+
+def _pdf_page_count(data: bytes, filename: str) -> int:
+    try:
+        import pypdfium2 as pdfium
+
+        pdf = pdfium.PdfDocument(data)
+        try:
+            n = len(pdf)
+        finally:
+            pdf.close()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "CORRUPT_FILE",
+                    "message": f"PDF is corrupt or unreadable: {filename}",
+                    "details": {},
+                    "retryable": True,
+                }
+            },
+        )
+    if n == 0 or n > MAX_PDF_PAGES:
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "PDF_PAGE_LIMIT",
+                    "message": f"PDF has {n} pages (limit {MAX_PDF_PAGES}): {filename}",
+                    "details": {"pages": n},
+                    "retryable": False,
+                }
+            },
+        )
+    return n
+
+
+def _natural_key(name: str) -> list:
+    """Filename ordering key: page1/page2/page10 sorts numerically."""
+    return [
+        int(t) if t.isdigit() else t.lower()
+        for t in re.split(r"(\d+)", name)
+    ]
 
 
 @router.post("/uploads")
@@ -40,21 +154,139 @@ async def upload(
     assert ctx.tenant_id is not None
     doc = Document(tenant_id=ctx.tenant_id)
 
-    # Originals are immutable blobs in private object storage — never
-    # served directly, only through authorized endpoints (WP01).
+    # 1) Validate everything before storing anything — a bad file fails the
+    #    whole request rather than leaving a half-registered document.
+    staged: list[dict] = []
     for i, f in enumerate(files):
         data = await f.read()
+        original_name = f.filename or f"file{i + 1}"
         if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(413, f"file too large: {f.filename}")
-        name = sanitize_filename(f.filename or f"page{i+1}")
-        uri = objects.put(f"uploads/{ctx.tenant_id}/{doc.id}/{i:03d}_{name}", data)
-        doc.pages.append(Page(index=i, original=PageImage(uri=uri)))
+            raise HTTPException(
+                413,
+                {
+                    "error": {
+                        "code": "FILE_TOO_LARGE",
+                        "message": f"file too large: {original_name}",
+                        "details": {"limit": MAX_FILE_BYTES},
+                        "retryable": False,
+                    }
+                },
+            )
+        mime = _sniff_mime(data, original_name)
+        entry: dict = {
+            "data": data,
+            "original_name": original_name,
+            "safe_name": sanitize_filename(original_name),
+            "mime": mime,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "upload_index": i,
+            "pdf_pages": 0,
+            "width": None,
+            "height": None,
+        }
+        if mime == "application/pdf":
+            entry["pdf_pages"] = _pdf_page_count(data, original_name)
+        else:
+            entry["width"], entry["height"] = _validate_image(data, original_name)
+        staged.append(entry)
+
+    # 2) Initial page order: natural sort on the original name
+    #    (page1, page2, page10), stable by upload order for ties.
+    staged.sort(key=lambda e: (_natural_key(e["safe_name"]), e["upload_index"]))
+
+    # 3) Create the canonical document row first — source_pages references
+    #    it via foreign key.
+    cstore.create_document(ctx.tenant_id, created_by=ctx.user_id, doc_id=doc.id)
+
+    # 4) Store blobs + register assets/pages. Originals are immutable
+    #    content-addressed blobs; identical bytes reuse the same asset.
+    source_pages: list[SourcePage] = []
+    for entry in staged:
+        # Content-addressed dedup: identical bytes for this tenant reuse
+        # the existing asset (and its blob) instead of double-storing.
+        asset = cstore.find_source_asset(ctx.tenant_id, entry["sha256"])
+        if asset is None:
+            blob_key = (
+                f"uploads/{ctx.tenant_id}/{doc.id}/"
+                f"{entry['upload_index']:03d}_{entry['safe_name']}"
+            )
+            uri = objects.put(blob_key, entry["data"])
+            asset = cstore.put_source_asset(
+                SourceAsset(
+                    tenant_id=ctx.tenant_id,
+                    sha256=entry["sha256"],
+                    mime=entry["mime"],
+                    byte_size=len(entry["data"]),
+                    original_name=entry["original_name"],
+                    blob_key=blob_key,
+                )
+            )
+        entry["asset"] = asset
+        entry["uri"] = f"local://{asset.blob_key}"
+
+        if entry["mime"] == "application/pdf":
+            for p in range(entry["pdf_pages"]):
+                source_pages.append(
+                    SourcePage(
+                        tenant_id=ctx.tenant_id,
+                        document_id=doc.id,
+                        asset_id=asset.id,
+                        pdf_page_index=p,
+                        original_sha256=entry["sha256"],
+                        original_name=entry["original_name"],
+                        upload_index=entry["upload_index"],
+                    )
+                )
+        else:
+            source_pages.append(
+                SourcePage(
+                    tenant_id=ctx.tenant_id,
+                    document_id=doc.id,
+                    asset_id=asset.id,
+                    width_px=entry["width"],
+                    height_px=entry["height"],
+                    original_sha256=entry["sha256"],
+                    original_name=entry["original_name"],
+                    upload_index=entry["upload_index"],
+                )
+            )
+
+    for sp in source_pages:
+        cstore.put_source_page(sp)
+
+    # 4) The manifest records the initial (unconfirmed) page order; a later
+    #    confirm/reorder creates a new manifest + revision.
+    manifest = cstore.create_manifest(
+        SourceManifest(
+            tenant_id=ctx.tenant_id,
+            document_id=doc.id,
+            page_ids_ordered=[p.id for p in source_pages],
+        )
+    )
+
+    # 5) Document pages mirror the manifest order with source linkage.
+    entry_by_asset = {e["asset"].id: e for e in staged}
+    for i, sp in enumerate(source_pages):
+        entry = entry_by_asset[sp.asset_id]
+        doc.pages.append(
+            Page(
+                index=i,
+                original=PageImage(uri=entry["uri"]),
+                source_asset_id=sp.asset_id,
+                source_page_id=sp.id,
+                pdf_page_index=sp.pdf_page_index,
+                sha256=sp.original_sha256,
+                original_name=sp.original_name,
+                width=float(sp.width_px) if sp.width_px else None,
+                height=float(sp.height_px) if sp.height_px else None,
+            )
+        )
 
     store.save_document(doc)
 
-    # Canonical record + first revision + durable job (WP02 contract).
+    # Canonical record + first revision (bound to the manifest) + durable job.
     service = MutationService(cstore, tenancy)
-    service.create_revision(doc, ctx.tenant_id, ctx.user_id)
+    service.create_revision(doc, ctx.tenant_id, ctx.user_id, manifest_id=manifest.id)
     job = cstore.create_job(
         JobV2(
             tenant_id=ctx.tenant_id,
@@ -70,11 +302,16 @@ async def upload(
         "document.upload",
         "document",
         doc.id,
-        {"files": len(files), "job_id": job.id},
+        {
+            "files": len(files),
+            "pages": len(source_pages),
+            "manifest_id": manifest.id,
+            "job_id": job.id,
+        },
     )
     threading.Thread(
         target=run_once,
         args=(cstore, store, objects, tenancy, "api-worker"),
         daemon=True,
     ).start()
-    return {"job_id": job.id, "document_id": doc.id}
+    return {"job_id": job.id, "document_id": doc.id, "manifest_id": manifest.id}

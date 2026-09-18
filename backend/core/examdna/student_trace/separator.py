@@ -18,6 +18,11 @@ MIN_DIAGONAL = 70         # px — marks are large; glyph fragments are small
 CHROMA_MIN = 40           # colored ink (red/blue pens) stands out by chroma
 WHITE_MIN = 245
 
+# S01 guard: never whiten print-dark pixels; record overlap components as
+# uncertain regions. Internal knob — the golden-cache migration script
+# disables it to reproduce the pre-guard (destructive) output bytes.
+PRESERVE_PRINT_OVERLAP = True
+
 
 def run(ctx: PipelineContext) -> None:
     """Separate student handwriting/marking traces from the printed layer.
@@ -27,7 +32,7 @@ def run(ctx: PipelineContext) -> None:
     """
     total_marks = 0
     work = ctx.workdir / "trace"
-    work.mkdir(exist_ok=True)
+    work.mkdir(parents=True, exist_ok=True)
     for page in ctx.document.pages:
         gray_uri = page.original.variants.get("grayscale", page.original.uri)
         gray_path = ctx.resolve_uri(gray_uri)
@@ -37,6 +42,21 @@ def run(ctx: PipelineContext) -> None:
 
         gray = np.asarray(Image.open(gray_path).convert("L"), dtype=np.uint8)
         mask = _trace_mask(gray, ctx.resolve_uri(page.original.uri))
+        # S01 print-destruction guard: never whiten printed cores. Pixels
+        # the trace classifier caught that sit on print-dark strokes are
+        # unmasked and their components recorded as uncertain regions for
+        # original comparison / human review.
+        print_dark = gray < PRINT_MAX
+        overlap = mask & print_dark
+        if PRESERVE_PRINT_OVERLAP and overlap.any():
+            mask = mask & ~print_dark
+            page.uncertain_regions = _uncertain_regions(overlap)
+            ctx.emit(
+                "student_trace",
+                f"페이지 {page.index + 1}: 인쇄 겹침 "
+                f"{len(page.uncertain_regions)}영역을 원본 대조 대상으로 보존",
+                "warn",
+            )
         total_marks += int(mask.sum())
 
         mask_img = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
@@ -60,6 +80,33 @@ def run(ctx: PipelineContext) -> None:
 def _trace_mask(gray: np.ndarray, original: Path) -> np.ndarray:
     mask = _pencil_mask(gray) | _color_mask(original, gray.shape)
     return _dilate(mask, 2)
+
+
+def _uncertain_regions(overlap: np.ndarray) -> list[dict]:
+    """Bounding boxes of print-overlapping trace components — regions where
+    deletion could damage print, kept so they can be compared against the
+    original instead of silently erased (S01)."""
+    labels, counts = _label(overlap)
+    ys, xs = np.nonzero(overlap)
+    regions: list[dict] = []
+    if not len(ys):
+        return regions
+    coords = np.stack([labels[ys, xs], ys, xs], axis=1)
+    for lbl, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+        pts = coords[coords[:, 0] == lbl][:, 1:]
+        regions.append(
+            {
+                "bbox_px": {
+                    "x": int(pts[:, 1].min()),
+                    "y": int(pts[:, 0].min()),
+                    "w": int(pts[:, 1].max() - pts[:, 1].min()) + 1,
+                    "h": int(pts[:, 0].max() - pts[:, 0].min()) + 1,
+                },
+                "overlap_pixels": int(count),
+                "reason": "trace_mask_overlaps_print",
+            }
+        )
+    return regions
 
 
 def _pencil_mask(gray: np.ndarray) -> np.ndarray:

@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { API, getReviewItems, resolveItem, ReviewItem } from "@/lib/api";
+import {
+  activeTenant,
+  API,
+  confirmPageOrder,
+  DocPage,
+  getDocPages,
+  getReviewItems,
+  resolveItem,
+  ReviewItem,
+  SourceManifestInfo,
+} from "@/lib/api";
 
 interface LogicFlagGroup {
   question_number: number;
@@ -45,6 +55,9 @@ export default function ReviewPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [pages, setPages] = useState<DocPage[]>([]);
+  const [manifest, setManifest] = useState<SourceManifestInfo | null>(null);
+  const [orderMsg, setOrderMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +68,17 @@ export default function ReviewPage() {
         setItems(data.items);
         setFlags(data.logic_flags);
         setMissingNumbers(data.missing_numbers ?? []);
+        const tenant = activeTenant();
+        if (tenant) {
+          try {
+            const pd = await getDocPages(tenant, id);
+            if (cancelled) return;
+            setPages(pd.pages);
+            setManifest(pd.manifest);
+          } catch {
+            /* page manifest unavailable — order panel stays hidden */
+          }
+        }
       } catch (e) {
         if (!cancelled) setError(String(e));
       } finally {
@@ -71,6 +95,33 @@ export default function ReviewPage() {
     if (value === undefined) return;
     await resolveItem(id, atuId, value);
     setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
+  };
+
+  const movePage = (index: number, dir: -1 | 1) => {
+    setPages((prev) => {
+      const j = index + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+    setOrderMsg(null);
+  };
+
+  const confirmOrder = async () => {
+    const tenant = activeTenant();
+    if (!tenant) return;
+    try {
+      const res = await confirmPageOrder(
+        tenant,
+        id,
+        pages.map((p) => p.source_page_id),
+      );
+      setManifest(res.data.manifest);
+      setOrderMsg("페이지 순서를 확정했습니다");
+    } catch (e) {
+      setOrderMsg(`확정 실패: ${String(e)}`);
+    }
   };
 
   const pending = items.length + flags.length + missingNumbers.length;
@@ -93,6 +144,74 @@ export default function ReviewPage() {
         <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
           {error}
         </p>
+      )}
+
+      {pages.length > 0 && (
+        <section className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">페이지 순서</h2>
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${
+                manifest?.confirmed_by
+                  ? "bg-green-100 text-green-800"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {manifest?.confirmed_by ? "확정됨" : "미확정"}
+            </span>
+          </div>
+          <ol className="mb-3 space-y-1">
+            {pages.map((p, i) => (
+              <li
+                key={p.source_page_id ?? i}
+                className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm"
+              >
+                <span className="w-6 text-gray-400">{i + 1}</span>
+                <span className="flex-1 truncate">
+                  {p.original_name ?? p.source_page_id}
+                  {p.pdf_page_index !== null && (
+                    <span className="ml-1 text-xs text-gray-500">
+                      (PDF {p.pdf_page_index + 1}p)
+                    </span>
+                  )}
+                </span>
+                {p.uncertain_regions.length > 0 && (
+                  <span
+                    className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700"
+                    title="인쇄 겹침으로 보류된 영역 — 원본 대조 필요"
+                  >
+                    보류 {p.uncertain_regions.length}
+                  </span>
+                )}
+                <button
+                  onClick={() => movePage(i, -1)}
+                  disabled={i === 0}
+                  className="rounded border px-2 py-0.5 text-xs disabled:opacity-30"
+                  aria-label="위로"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => movePage(i, 1)}
+                  disabled={i === pages.length - 1}
+                  className="rounded border px-2 py-0.5 text-xs disabled:opacity-30"
+                  aria-label="아래로"
+                >
+                  ↓
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={confirmOrder}
+              className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+            >
+              순서 확정
+            </button>
+            {orderMsg && <span className="text-sm text-gray-600">{orderMsg}</span>}
+          </div>
+        </section>
       )}
 
       {missingNumbers.length > 0 && (

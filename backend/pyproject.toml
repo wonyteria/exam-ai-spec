@@ -10,6 +10,7 @@ dependencies = [
     "python-multipart",
     "pillow",
     "numpy",
+    "pypdfium2",
     "google-genai",
     "python-dotenv",
 ]

@@ -46,6 +46,61 @@ class DocumentRecord(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+# --- source assets / pages / manifest (WP03) -------------------------------------
+
+
+class SourceAsset(BaseModel):
+    """Immutable uploaded blob. Bytes never change; dedup is per-tenant by
+    sha256 so a retried upload reuses the same asset."""
+    id: str = Field(default_factory=lambda: new_id("asset"))
+    tenant_id: str
+    sha256: str
+    mime: str
+    byte_size: int
+    original_name: str
+    blob_key: str
+    created_at: float = Field(default_factory=time.time)
+
+
+class SourcePage(BaseModel):
+    """One logical page of the exam. Upload order and exam order are
+    separate — ordering lives in the SourceManifest."""
+    id: str = Field(default_factory=lambda: new_id("spage"))
+    tenant_id: str
+    document_id: str
+    asset_id: str
+    pdf_page_index: Optional[int] = None
+    width_px: Optional[int] = None
+    height_px: Optional[int] = None
+    original_sha256: str
+    original_name: str = ""
+    upload_index: int = 0
+
+
+class SourceManifest(BaseModel):
+    """Ordered page list for a document. A reorder or confirmation creates
+    a new manifest (digest changes when order changes); revisions bind to
+    a manifest_id so rendered content always matches a page set."""
+    id: str = Field(default_factory=lambda: new_id("mf"))
+    tenant_id: str
+    document_id: str
+    page_ids_ordered: list[str] = Field(default_factory=list)
+    missing_page_expectation: Optional[str] = None
+    confirmed_by: Optional[str] = None
+    confirmed_at: Optional[float] = None
+    digest: str = ""
+    created_at: float = Field(default_factory=time.time)
+
+    def compute_digest(self) -> str:
+        return sha256_json(
+            {
+                "document_id": self.document_id,
+                "page_ids_ordered": self.page_ids_ordered,
+                "missing_page_expectation": self.missing_page_expectation,
+            }
+        )
+
+
 # --- revisions ----------------------------------------------------------------
 
 
@@ -63,6 +118,7 @@ class Revision(BaseModel):
     mode: RevisionMode = RevisionMode.RESTORE
     restore_baseline_revision_id: Optional[str] = None
     restores_revision_id: Optional[str] = None
+    manifest_id: Optional[str] = None
     metadata_snapshot: dict[str, Any] = Field(default_factory=dict)
     template_snapshot: dict[str, Any] = Field(default_factory=dict)
     content_json: dict[str, Any] = Field(default_factory=dict)

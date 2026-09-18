@@ -5,6 +5,7 @@ import hashlib
 import json
 import time
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -124,6 +125,7 @@ def _revision_out(rev) -> dict:
         "mode": rev.mode.value,
         "parent_revision_id": rev.parent_revision_id,
         "restores_revision_id": rev.restores_revision_id,
+        "manifest_id": rev.manifest_id,
         "content_hash": rev.content_hash,
         "style_hash": rev.style_hash,
         "solution_hash": rev.solution_hash,
@@ -152,6 +154,116 @@ def v1_get_document(
             "lifecycle_state": rec.lifecycle_state.value,
             "lifecycle_version": rec.lifecycle_version,
             "head_revision": _revision_out(head) if head else None,
+        },
+        "request_id": _request_id(),
+    }
+
+
+# --- pages / source manifest (WP03) -----------------------------------------------
+
+
+def _page_out(page, manifest_order: list[str]) -> dict:
+    order_pos = (
+        manifest_order.index(page.source_page_id)
+        if page.source_page_id in manifest_order
+        else None
+    )
+    return {
+        "index": page.index,
+        "source_page_id": page.source_page_id,
+        "source_asset_id": page.source_asset_id,
+        "pdf_page_index": page.pdf_page_index,
+        "sha256": page.sha256,
+        "original_name": page.original_name,
+        "width": page.width,
+        "height": page.height,
+        "manifest_position": order_pos,
+        "transform": page.transform,
+        "uncertain_regions": page.uncertain_regions,
+    }
+
+
+@router.get("/tenants/{tenant_id}/documents/{doc_id}/pages")
+def v1_list_pages(
+    tenant_id: str,
+    doc_id: str,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Ordered source pages + the active manifest. Upload order and exam
+    order are separate; the manifest is the exam order."""
+    _doc_ctx(tenant_id, doc_id, "read", request, cstore)
+    head = cstore.get_head_revision(doc_id)
+    manifest = (
+        cstore.get_manifest(head.manifest_id)
+        if head and head.manifest_id
+        else cstore.latest_manifest(doc_id)
+    )
+    doc = (
+        Document.model_validate(head.content_json)
+        if head
+        else Document(tenant_id=tenant_id, id=doc_id)
+    )
+    order = manifest.page_ids_ordered if manifest else []
+    return {
+        "data": {
+            "manifest": (
+                {
+                    "id": manifest.id,
+                    "page_ids_ordered": order,
+                    "digest": manifest.digest,
+                    "confirmed_by": manifest.confirmed_by,
+                    "confirmed_at": manifest.confirmed_at,
+                    "missing_page_expectation": manifest.missing_page_expectation,
+                }
+                if manifest
+                else None
+            ),
+            "pages": [_page_out(p, order) for p in doc.pages],
+        },
+        "request_id": _request_id(),
+    }
+
+
+class PageOrderRequest(BaseModel):
+    page_ids_ordered: list[str]
+    missing_page_expectation: Optional[str] = None
+
+
+@router.put("/tenants/{tenant_id}/documents/{doc_id}/pages/order")
+def v1_confirm_page_order(
+    tenant_id: str,
+    doc_id: str,
+    req: PageOrderRequest,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Confirm or change exam page order. If-Match required (CAS); creates
+    a new manifest + revision so rendered output binds to the confirmed
+    page set."""
+    ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+
+    def go():
+        return _service(cstore).confirm_page_order(
+            tenant_id,
+            ctx.user_id,
+            doc_id,
+            _if_match(request),
+            req.page_ids_ordered,
+            req.missing_page_expectation,
+        )
+
+    manifest, rev = _handle(go)
+    return {
+        "data": {
+            "manifest": {
+                "id": manifest.id,
+                "page_ids_ordered": manifest.page_ids_ordered,
+                "digest": manifest.digest,
+                "confirmed_by": manifest.confirmed_by,
+                "confirmed_at": manifest.confirmed_at,
+            },
+            "revision": _revision_out(rev),
         },
         "request_id": _request_id(),
     }

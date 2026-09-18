@@ -23,6 +23,9 @@ from .models import (
     LifecycleState,
     Revision,
     RevisionMode,
+    SourceAsset,
+    SourceManifest,
+    SourcePage,
     TERMINAL_JOB_STATES,
     canonical_json,
     new_id,
@@ -51,6 +54,7 @@ CREATE TABLE IF NOT EXISTS revisions (
     mode TEXT NOT NULL,
     restore_baseline_revision_id TEXT,
     restores_revision_id TEXT,
+    manifest_id TEXT,
     metadata_snapshot TEXT NOT NULL DEFAULT '{}',
     template_snapshot TEXT NOT NULL DEFAULT '{}',
     content_json TEXT NOT NULL DEFAULT '{}',
@@ -64,6 +68,43 @@ CREATE TABLE IF NOT EXISTS revisions (
     UNIQUE (document_id, revision_no)
 );
 CREATE INDEX IF NOT EXISTS idx_revisions_doc ON revisions(document_id, revision_no);
+CREATE TABLE IF NOT EXISTS source_assets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    original_name TEXT NOT NULL DEFAULT '',
+    blob_key TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    UNIQUE (tenant_id, sha256)
+);
+CREATE TABLE IF NOT EXISTS source_pages (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    document_id TEXT NOT NULL REFERENCES documents(id),
+    asset_id TEXT NOT NULL REFERENCES source_assets(id),
+    pdf_page_index INTEGER,
+    width_px INTEGER,
+    height_px INTEGER,
+    original_sha256 TEXT NOT NULL,
+    original_name TEXT NOT NULL DEFAULT '',
+    upload_index INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_source_pages_doc ON source_pages(document_id);
+CREATE TABLE IF NOT EXISTS source_manifests (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    document_id TEXT NOT NULL REFERENCES documents(id),
+    page_ids_ordered TEXT NOT NULL DEFAULT '[]',
+    missing_page_expectation TEXT,
+    confirmed_by TEXT,
+    confirmed_at REAL,
+    digest TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_source_manifests_doc
+    ON source_manifests(document_id, created_at);
 CREATE TABLE IF NOT EXISTS checks (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
@@ -236,6 +277,19 @@ class CanonicalStore:
         self._conn.execute("PRAGMA busy_timeout=5000")
         with self._lock, self._conn:
             self._conn.executescript(_SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Additive column migrations for databases created before a
+        schema version introduced them."""
+        cols = {
+            r[1]
+            for r in self._conn.execute("PRAGMA table_info(revisions)")
+        }
+        if "manifest_id" not in cols:
+            self._conn.execute(
+                "ALTER TABLE revisions ADD COLUMN manifest_id TEXT"
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -310,10 +364,11 @@ class CanonicalStore:
                     """INSERT INTO revisions
                        (id, document_id, revision_no, parent_revision_id, mode,
                         restore_baseline_revision_id, restores_revision_id,
+                        manifest_id,
                         metadata_snapshot, template_snapshot, content_json,
                         content_hash, style_hash, solution_hash, policy_version,
                         created_by, created_at, change_summary)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         rev.id,
                         rev.document_id,
@@ -322,6 +377,7 @@ class CanonicalStore:
                         rev.mode.value,
                         rev.restore_baseline_revision_id,
                         rev.restores_revision_id,
+                        rev.manifest_id,
                         canonical_json(rev.metadata_snapshot),
                         canonical_json(rev.template_snapshot),
                         canonical_json(rev.content_json),
@@ -360,6 +416,138 @@ class CanonicalStore:
         for k in ("metadata_snapshot", "template_snapshot", "content_json", "change_summary"):
             d[k] = json.loads(d[k] or "{}")
         return Revision(**d)
+
+    # ---- source assets / pages / manifests (WP03) --------------------------------
+
+    def put_source_asset(self, asset: SourceAsset) -> SourceAsset:
+        """Insert a source asset; identical bytes for the same tenant reuse
+        the existing asset row (UNIQUE tenant+sha256 -> dedup/retry-safe)."""
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT OR IGNORE INTO source_assets
+                   (id, tenant_id, sha256, mime, byte_size, original_name,
+                    blob_key, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    asset.id,
+                    asset.tenant_id,
+                    asset.sha256,
+                    asset.mime,
+                    asset.byte_size,
+                    asset.original_name,
+                    asset.blob_key,
+                    asset.created_at,
+                ),
+            )
+            row = self._conn.execute(
+                "SELECT * FROM source_assets WHERE tenant_id=? AND sha256=?",
+                (asset.tenant_id, asset.sha256),
+            ).fetchone()
+        return SourceAsset(**dict(row))
+
+    def get_source_asset(self, asset_id: str) -> Optional[SourceAsset]:
+        row = self._conn.execute(
+            "SELECT * FROM source_assets WHERE id=?", (asset_id,)
+        ).fetchone()
+        return SourceAsset(**dict(row)) if row else None
+
+    def find_source_asset(
+        self, tenant_id: str, sha256: str
+    ) -> Optional[SourceAsset]:
+        row = self._conn.execute(
+            "SELECT * FROM source_assets WHERE tenant_id=? AND sha256=?",
+            (tenant_id, sha256),
+        ).fetchone()
+        return SourceAsset(**dict(row)) if row else None
+
+    def put_source_page(self, page: SourcePage) -> SourcePage:
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO source_pages
+                   (id, tenant_id, document_id, asset_id, pdf_page_index,
+                    width_px, height_px, original_sha256, original_name,
+                    upload_index)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    page.id,
+                    page.tenant_id,
+                    page.document_id,
+                    page.asset_id,
+                    page.pdf_page_index,
+                    page.width_px,
+                    page.height_px,
+                    page.original_sha256,
+                    page.original_name,
+                    page.upload_index,
+                ),
+            )
+        return page
+
+    def set_source_page_size(
+        self, page_id: str, width_px: int, height_px: int
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE source_pages SET width_px=?, height_px=? WHERE id=?",
+                (width_px, height_px, page_id),
+            )
+
+    def get_source_page(self, page_id: str) -> Optional[SourcePage]:
+        row = self._conn.execute(
+            "SELECT * FROM source_pages WHERE id=?", (page_id,)
+        ).fetchone()
+        return SourcePage(**dict(row)) if row else None
+
+    def list_source_pages(self, doc_id: str) -> list[SourcePage]:
+        rows = self._conn.execute(
+            "SELECT * FROM source_pages WHERE document_id=? ORDER BY upload_index",
+            (doc_id,),
+        ).fetchall()
+        return [SourcePage(**dict(r)) for r in rows]
+
+    def create_manifest(self, manifest: SourceManifest) -> SourceManifest:
+        """Persist a new manifest. The digest covers page order +
+        expectation so any reorder produces a different digest."""
+        manifest.digest = manifest.compute_digest()
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO source_manifests
+                   (id, tenant_id, document_id, page_ids_ordered,
+                    missing_page_expectation, confirmed_by, confirmed_at,
+                    digest, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    manifest.id,
+                    manifest.tenant_id,
+                    manifest.document_id,
+                    canonical_json(manifest.page_ids_ordered),
+                    manifest.missing_page_expectation,
+                    manifest.confirmed_by,
+                    manifest.confirmed_at,
+                    manifest.digest,
+                    manifest.created_at,
+                ),
+            )
+        return manifest
+
+    def get_manifest(self, manifest_id: str) -> Optional[SourceManifest]:
+        row = self._conn.execute(
+            "SELECT * FROM source_manifests WHERE id=?", (manifest_id,)
+        ).fetchone()
+        return self._row_to_manifest(row) if row else None
+
+    def latest_manifest(self, doc_id: str) -> Optional[SourceManifest]:
+        row = self._conn.execute(
+            """SELECT * FROM source_manifests
+               WHERE document_id=? ORDER BY created_at DESC LIMIT 1""",
+            (doc_id,),
+        ).fetchone()
+        return self._row_to_manifest(row) if row else None
+
+    def _row_to_manifest(self, row: sqlite3.Row) -> SourceManifest:
+        d = dict(row)
+        d["page_ids_ordered"] = json.loads(d["page_ids_ordered"] or "[]")
+        return SourceManifest(**d)
 
     # ---- checks -----------------------------------------------------------------
 

@@ -243,3 +243,83 @@ export async function exportDoc(docId: string, format: string) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// --- source pages / manifest (WP03) -----------------------------------------
+
+export interface DocPage {
+  index: number;
+  source_page_id: string;
+  source_asset_id: string | null;
+  pdf_page_index: number | null;
+  sha256: string | null;
+  original_name: string | null;
+  width: number | null;
+  height: number | null;
+  manifest_position: number | null;
+  transform: Record<string, unknown> | null;
+  uncertain_regions: { bbox_px?: unknown; reason?: string }[];
+}
+
+export interface SourceManifestInfo {
+  id: string;
+  page_ids_ordered: string[];
+  digest: string;
+  confirmed_by: string | null;
+  confirmed_at: number | null;
+  missing_page_expectation: string | null;
+}
+
+export interface DocPagesResponse {
+  manifest: SourceManifestInfo | null;
+  pages: DocPage[];
+}
+
+async function getHeadRevisionId(
+  tenantId: string,
+  docId: string,
+): Promise<string | null> {
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/documents/${docId}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.data?.head_revision?.id ?? null;
+}
+
+export async function getDocPages(
+  tenantId: string,
+  docId: string,
+): Promise<DocPagesResponse> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/pages`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.data;
+}
+
+export async function confirmPageOrder(
+  tenantId: string,
+  docId: string,
+  pageIdsOrdered: string[],
+  missingPageExpectation?: string,
+) {
+  const ifMatch = await getHeadRevisionId(tenantId, docId);
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/pages/order`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(ifMatch ? { "If-Match": ifMatch } : {}),
+      },
+      body: JSON.stringify({
+        page_ids_ordered: pageIdsOrdered,
+        missing_page_expectation: missingPageExpectation ?? null,
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

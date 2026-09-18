@@ -20,6 +20,7 @@ from .models import (
     IssueState,
     Revision,
     RevisionMode,
+    SourceManifest,
     new_id,
     sha256_json,
 )
@@ -54,9 +55,10 @@ IMPLEMENTED_CHECKERS = {
 }
 
 
-def _content_payload(doc: Document) -> dict:
+def _content_payload(doc: Document, manifest_digest: Optional[str] = None) -> dict:
     """Meaning-bearing content: questions minus answers/solutions, plus
-    metadata scope fields and the page manifest."""
+    metadata scope fields and the source page manifest (02: content_hash
+    covers the source manifest, so a page reorder changes content_hash)."""
     return {
         "metadata": {
             "subject": doc.metadata.subject,
@@ -66,6 +68,7 @@ def _content_payload(doc: Document) -> dict:
             "semester": doc.metadata.semester,
             "exam_type": doc.metadata.exam_type,
         },
+        "manifest_digest": manifest_digest,
         "pages": [p.model_dump() for p in doc.pages],
         "questions": [
             q.model_dump(exclude={"answer", "solution", "verification"})
@@ -101,9 +104,11 @@ def _style_payload(doc: Document) -> dict:
     }
 
 
-def revision_hashes(doc: Document) -> tuple[str, str, str]:
+def revision_hashes(
+    doc: Document, manifest_digest: Optional[str] = None
+) -> tuple[str, str, str]:
     return (
-        sha256_json(_content_payload(doc)),
+        sha256_json(_content_payload(doc, manifest_digest)),
         sha256_json(_style_payload(doc)),
         sha256_json(_solution_payload(doc)),
     )
@@ -130,12 +135,18 @@ class MutationService:
         ops_summary: Optional[list[dict]] = None,
         restores_revision_id: Optional[str] = None,
         baseline_revision_id: Optional[str] = None,
+        manifest_id: Optional[str] = None,
     ) -> Revision:
         rec = self.store.get_document(doc.id)
         if rec is None:
             rec = self.store.create_document(tenant_id, created_by=actor, doc_id=doc.id)
         parent = self.store.get_head_revision(doc.id)
-        c_hash, s_hash, sol_hash = revision_hashes(doc)
+        if manifest_id is None and parent is not None:
+            manifest_id = parent.manifest_id
+        manifest = self.store.get_manifest(manifest_id) if manifest_id else None
+        c_hash, s_hash, sol_hash = revision_hashes(
+            doc, manifest.digest if manifest else None
+        )
         rev = Revision(
             document_id=doc.id,
             revision_no=(parent.revision_no + 1) if parent else 1,
@@ -143,6 +154,7 @@ class MutationService:
             mode=mode,
             restore_baseline_revision_id=baseline_revision_id,
             restores_revision_id=restores_revision_id,
+            manifest_id=manifest_id,
             metadata_snapshot=doc.metadata.model_dump(),
             template_snapshot={
                 "brand_id": doc.brand_id,
@@ -210,7 +222,12 @@ class MutationService:
         doc = Document.model_validate(head.content_json)
         summary = self._apply_ops(doc, ops)
 
-        c_hash, s_hash, sol_hash = revision_hashes(doc)
+        head_manifest = (
+            self.store.get_manifest(head.manifest_id) if head.manifest_id else None
+        )
+        c_hash, s_hash, sol_hash = revision_hashes(
+            doc, head_manifest.digest if head_manifest else None
+        )
         rev = Revision(
             document_id=doc_id,
             revision_no=head.revision_no + 1,
@@ -219,6 +236,7 @@ class MutationService:
             restore_baseline_revision_id=(
                 head.restore_baseline_revision_id or head.id
             ),
+            manifest_id=head.manifest_id,
             metadata_snapshot=doc.metadata.model_dump(),
             template_snapshot={
                 "brand_id": doc.brand_id,
@@ -290,13 +308,21 @@ class MutationService:
             raise NotFoundError("revision not found")
         head = self.store.get_revision(expected)
         doc = Document.model_validate(target.content_json)
-        c_hash, s_hash, sol_hash = revision_hashes(doc)
+        target_manifest = (
+            self.store.get_manifest(target.manifest_id)
+            if target.manifest_id
+            else None
+        )
+        c_hash, s_hash, sol_hash = revision_hashes(
+            doc, target_manifest.digest if target_manifest else None
+        )
         rev = Revision(
             document_id=doc_id,
             revision_no=head.revision_no + 1,
             parent_revision_id=head.id,
             mode=RevisionMode.UNDO,
             restores_revision_id=restores_revision_id,
+            manifest_id=target.manifest_id,
             metadata_snapshot=doc.metadata.model_dump(),
             template_snapshot={
                 "brand_id": doc.brand_id,
@@ -325,6 +351,80 @@ class MutationService:
             )
         )
         return rev
+
+    # -- page order / manifest ---------------------------------------------------
+
+    def confirm_page_order(
+        self,
+        tenant_id: str,
+        actor: str,
+        doc_id: str,
+        if_match: Optional[str],
+        page_ids_ordered: list[str],
+        missing_page_expectation: Optional[str] = None,
+    ) -> tuple[SourceManifest, Revision]:
+        """Confirm or change the exam page order. Creates a new manifest
+        (digest covers the order) and a new revision bound to it, so any
+        rendered output traces to the confirmed page set."""
+        rec = self._require_active_document(doc_id, tenant_id)
+        expected = self._require_if_match(rec, if_match)
+        head = self.store.get_revision(expected)
+        assert head is not None
+        doc = Document.model_validate(head.content_json)
+
+        pages_by_id = {p.source_page_id: p for p in doc.pages if p.source_page_id}
+        if sorted(page_ids_ordered) != sorted(pages_by_id):
+            raise ValidationError(
+                "page_ids_ordered must be a permutation of the document's "
+                "source pages",
+                {
+                    "expected": sorted(pages_by_id),
+                    "received": sorted(page_ids_ordered),
+                },
+            )
+        manifest = self.store.create_manifest(
+            SourceManifest(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                page_ids_ordered=page_ids_ordered,
+                missing_page_expectation=missing_page_expectation,
+                confirmed_by=actor,
+                confirmed_at=time.time(),
+            )
+        )
+        # Reorder the document's pages to match the confirmed order.
+        doc.pages = [pages_by_id[pid] for pid in page_ids_ordered]
+        for i, p in enumerate(doc.pages):
+            p.index = i
+        rev = self.create_revision(
+            doc,
+            tenant_id,
+            actor,
+            mode=RevisionMode.EDIT,
+            ops_summary=[
+                {
+                    "op": "confirm_page_order",
+                    "manifest_id": manifest.id,
+                    "pages": len(page_ids_ordered),
+                }
+            ],
+            manifest_id=manifest.id,
+        )
+        self.tenancy.audit(
+            AuditEvent(
+                tenant_id=tenant_id,
+                user_id=actor,
+                action="document.confirm_page_order",
+                object_type="document",
+                object_id=doc_id,
+                detail={
+                    "manifest_id": manifest.id,
+                    "digest": manifest.digest,
+                    "revision_id": rev.id,
+                },
+            )
+        )
+        return manifest, rev
 
     # -- op application ---------------------------------------------------------
 
