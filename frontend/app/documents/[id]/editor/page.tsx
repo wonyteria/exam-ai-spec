@@ -9,16 +9,29 @@ export default function EditorPage() {
   const [instruction, setInstruction] = useState("");
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
 
   const submit = async () => {
     if (!instruction.trim() || busy) return;
     setBusy(true);
     const res = await sendEdit(id, instruction);
-    setLog((l) => [
-      `> ${instruction}`,
-      res.ok ? "적용됨" : `미적용: ${res.detail ?? "?"}`,
-      ...l,
-    ]);
+    const lines = [`> ${instruction}`];
+    if (res.ok) {
+      lines.push(
+        ...(res.applied ?? []).map(
+          (a) => `적용: ${a.question}번 ${a.field} → ${JSON.stringify(a.value)}`,
+        ),
+      );
+      setPreviewKey((k) => k + 1);
+    } else {
+      lines.push(`미적용: ${res.detail ?? "적용된 연산 없음"}`);
+    }
+    lines.push(
+      ...(res.skipped ?? []).map(
+        (s) => `건너뜀: ${s.question}번 ${s.field} — ${s.reason}`,
+      ),
+    );
+    setLog((l) => [...lines, ...l]);
     setInstruction("");
     setBusy(false);
   };
@@ -33,6 +46,7 @@ export default function EditorPage() {
 
         <section className="overflow-auto">
           <iframe
+            key={previewKey}
             src={`${API}/api/documents/${id}/preview`}
             className="h-full w-full"
             title="preview"

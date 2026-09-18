@@ -114,6 +114,12 @@ _SOLVE_BATCH_PROMPT = """다음은 복원된 중학교 수학 문제들입니다
 [{"number": 문항 표기, "solved": true|false, "answer": 정답(객관식이면 기호, 아니면 값), "steps": ["단계1", ...], "reason": "풀 수 없으면 이유"}]
 shared_stem이 있으면 공통 지문입니다. 조건이 불완전하거나 모순이면 solved=false로 두세요."""
 
+_EDIT_PROMPT = """복원된 시험지 문서와 사용자의 수정 지시가 주어집니다.
+지시를 문서 수정 연산 목록으로 변환해 JSON 배열로만 답하세요.
+[{"question": "문항 표기(예: 13, 논술형 2, 2-1)", "field": "body|choice|points|answer|type|equation|figure",
+  "choice": "선택지 기호(choice일 때)", "index": 수식 번호(equation일 때), "value": 새 값}]
+지시가 모호하거나 문서에 없는 문항이면 그 연산은 만들지 마세요. 수정할 게 없으면 []를 답하세요."""
+
 
 class GeminiProvider:
     """Gemini-backed provider covering vision/ocr/math-ocr/llm/solver roles."""
@@ -205,6 +211,21 @@ class GeminiProvider:
 
     def describe(self, image: Path, region: BBox | None = None) -> list[Candidate]:
         return []
+
+    def edit_ops(self, summary: list[dict], instruction: str) -> list[dict]:
+        """Natural-language edit -> structured ops (applied by core.editing)."""
+        prompt = (
+            _EDIT_PROMPT
+            + "\n\n문서:\n"
+            + json.dumps(summary, ensure_ascii=False)
+            + "\n\n지시:\n"
+            + instruction
+        )
+        try:
+            data = self._generate_json([prompt])
+        except (json.JSONDecodeError, DailyQuotaExhausted):
+            return []
+        return data if isinstance(data, list) else []
 
     def complete(self, prompt: str, context: dict[str, Any] | None = None) -> Candidate:
         text = self._generate_text([json.dumps(context or {}, ensure_ascii=False), prompt])

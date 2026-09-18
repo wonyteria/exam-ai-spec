@@ -98,7 +98,15 @@ GEMINI_CACHE=1                              # 응답 디스크 캐시 (0=끔)
 돌려 `VERIFIED_FINAL` + 문항 내용을 expected와 비교한다. 캐시 미스는
 실제 API로 나가므로 즉시 실패 → fixture 드리프트 감지.
 
-## 현재 상태 (수직 슬라이스 골격)
+### 자연어 편집
+
+`POST /api/documents/{id}/edits {"instruction": "13번 선택지 ③을 ...로 바꿔"}`
+
+- `GeminiProvider.edit_ops`가 지시를 구조화 연산 목록으로 변환 (문서 요약+지시 1회 호출)
+- `core/examdna/editing.apply_ops`가 body/choice/points/answer/type/equation/figure 필드에 적용
+- 각 편집은 `provider="human-edit"` HUMAN_VERIFIED ATU로 provenance 기록 — 게이트 만족 유지
+- 모호한 지시·없는 문항은 스킵 목록으로 반환 (추측하지 않음)
+- 에디터 UI에 적용/건너뜀 내역 표시 + 프리뷰 자동 새로고침
 
 ## 현재 상태 (수직 슬라이스 골격)
 

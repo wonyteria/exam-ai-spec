@@ -73,7 +73,19 @@ export async function resolveItem(docId: string, atuId: string, value: string) {
   return res.json();
 }
 
-export async function sendEdit(docId: string, instruction: string) {
+export interface EditResponse {
+  ok: boolean;
+  instruction: string;
+  applied: { question: string; field: string; value: unknown }[];
+  skipped: { question: string; field: string; reason: string }[];
+  detail?: string;
+  document_version: number;
+}
+
+export async function sendEdit(
+  docId: string,
+  instruction: string,
+): Promise<EditResponse> {
   const res = await fetch(`${API}/api/documents/${docId}/edits`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

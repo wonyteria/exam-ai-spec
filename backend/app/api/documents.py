@@ -95,11 +95,26 @@ class EditRequest(BaseModel):
 
 @router.post("/{doc_id}/edits")
 def edit(doc_id: str, req: EditRequest, store: Store = Depends(get_store)):
+    from core.examdna.editing import apply_ops, summarize
+    from jobs.runner import _gemini_provider
+
     doc = store.load_document(doc_id)
+    provider = _gemini_provider()
+    if provider is None or not hasattr(provider, "edit_ops"):
+        return {
+            "ok": False,
+            "instruction": req.instruction,
+            "detail": "편집 provider가 없습니다 (GEMINI_API_KEY 필요)",
+            "document_version": doc.version,
+        }
+    ops = provider.edit_ops(summarize(doc), req.instruction)
+    result = apply_ops(doc, ops)
+    if result["applied"]:
+        store.save_document(doc)
     return {
-        "ok": False,
+        "ok": bool(result["applied"]),
         "instruction": req.instruction,
-        "detail": "AI Editor 미구현 — 자연어 편집은 Feature 10에서 활성화",
+        **result,
         "document_version": doc.version,
     }
 
