@@ -51,6 +51,7 @@ IMPLEMENTED_CHECKERS = {
     "SCHEMA_REFERENTIAL_INTEGRITY",
     "QUESTION_CHOICE_SCORE_COMPLETENESS",
     "SOURCE_REGION_COVERAGE",
+    "MATH_FIGURE_SEMANTIC_CONSISTENCY",
     "BLOCKING_ISSUES_CLOSED",
 }
 
@@ -161,6 +162,7 @@ class MutationService:
         if manifest_id is None and parent is not None:
             manifest_id = parent.manifest_id
         manifest = self.store.get_manifest(manifest_id) if manifest_id else None
+        self._normalize_math(doc)
         c_hash, s_hash, sol_hash = revision_hashes(
             doc, manifest.digest if manifest else None
         )
@@ -187,6 +189,28 @@ class MutationService:
         self.store.insert_revision(rev, expected_head=rec.head_revision_id)
         self._seed_checks(rev)
         return rev
+
+    @staticmethod
+    def _normalize_math(doc: Document) -> None:
+        """Derive `hwp_formula` (HWP equation script) from `latex` for every
+        equation object that has LaTeX but no formula yet. Parse failures
+        are left unset — MATH_FIGURE_SEMANTIC_CONSISTENCY flags them as
+        issues rather than silently emitting broken script."""
+        from document.math_ast import latex_to_hwp
+        from document.models import Equation
+
+        for q in doc.questions:
+            for i, eq in enumerate(q.equations):
+                # SetField may have assigned raw dicts — coerce to real
+                # Equation objects so the snapshot holds typed objects.
+                if isinstance(eq, dict):
+                    eq = Equation.model_validate(eq)
+                    q.equations[i] = eq
+                if eq.latex and not eq.hwp_formula:
+                    try:
+                        eq.hwp_formula = latex_to_hwp(eq.latex)["script"]
+                    except Exception:
+                        pass  # checker flags the invalid equation
 
     def _seed_checks(self, rev: Revision) -> None:
         """Register the full required check list for the revision's policy —
@@ -238,6 +262,7 @@ class MutationService:
         assert head is not None
         doc = Document.model_validate(head.content_json)
         summary = self._apply_ops(doc, ops)
+        self._normalize_math(doc)
 
         head_manifest = (
             self.store.get_manifest(head.manifest_id) if head.manifest_id else None
@@ -682,7 +707,66 @@ class MutationService:
                     f"questions without field evidence: {no_atu}",
                 )
             return CheckState.PASSED, "all questions have field evidence"
+        if kind == "MATH_FIGURE_SEMANTIC_CONSISTENCY":
+            return self._check_math_figure(doc)
         return CheckState.NOT_RUN, "no validator implemented"
+
+    @staticmethod
+    def _check_math_figure(doc: Document) -> tuple[CheckState, str]:
+        """Equation AST serializability + figure scene/table/graph
+        validity + figure provenance. Invalid content fails — impossible
+        or incomplete geometry becomes an issue, never a prettified pass
+        (A08/S04)."""
+        from document.math_ast import (
+            MathParseError,
+            UnsupportedMathError,
+            parse_latex,
+            to_hwp_script,
+        )
+        from document.scene import validate_graph, validate_scene, validate_table
+
+        errors: list[str] = []
+        checked = 0
+        for q in doc.questions:
+            label = q.label or str(q.number)
+            for eq in q.equations:
+                checked += 1
+                if not eq.latex and not eq.hwp_formula:
+                    errors.append(
+                        f"q{label}: equation {eq.id} has no latex/hwp_formula"
+                    )
+                    continue
+                if eq.latex:
+                    try:
+                        to_hwp_script(parse_latex(eq.latex))
+                    except (MathParseError, UnsupportedMathError) as exc:
+                        errors.append(f"q{label}: equation {eq.id}: {exc}")
+            for fig in q.figures:
+                checked += 1
+                if fig.source is None and not fig.atu_ids:
+                    errors.append(
+                        f"q{label}: figure {fig.id} has no source evidence"
+                    )
+                if fig.scene is not None:
+                    errors.extend(
+                        f"q{label} scene: {e}" for e in validate_scene(fig.scene)
+                    )
+                if fig.table is not None:
+                    errors.extend(
+                        f"q{label} table: {e}" for e in validate_table(fig.table)
+                    )
+                if fig.graph is not None:
+                    errors.extend(
+                        f"q{label} graph: {e}" for e in validate_graph(fig.graph)
+                    )
+                if fig.relations and fig.scene is None:
+                    errors.append(
+                        f"q{label}: {len(fig.relations)} declared relations "
+                        "have no scene to bind them"
+                    )
+        if errors:
+            return CheckState.FAILED, "; ".join(errors[:8])
+        return CheckState.PASSED, f"{checked} math/figure objects consistent"
 
     # -- solver-backed verification (WP04) ----------------------------------------
 

@@ -6,6 +6,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from document.scene import FigureScene, Graph, Table
+
 
 def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
@@ -102,6 +104,11 @@ class Figure(BaseModel):
     relations: list[FigureRelation] = Field(default_factory=list)
     atu_ids: list[str] = Field(default_factory=list)
     source: Optional[SourceRef] = None
+    # Typed payloads (WP05): a scene graph is data-only — validated, never
+    # executed. Legacy topology dicts stay for backward compatibility.
+    scene: Optional["FigureScene"] = None
+    table: Optional["Table"] = None
+    graph: Optional["Graph"] = None
 
 
 class Answer(BaseModel):
