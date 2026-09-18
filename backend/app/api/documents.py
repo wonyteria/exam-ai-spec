@@ -175,8 +175,31 @@ def resolve_item(
     req: ResolveRequest,
     request: Request,
     access=Depends(doc_access("edit")),
+    store: Store = Depends(get_store),
 ):
+    """Review resolution is a canonical mutation when a canonical record
+    exists (ResolveATU → new revision, check invalidation, audit). The
+    legacy flat-document path is kept for non-canonical docs."""
     ctx, doc = access
+    service, head = _canonical_for(doc_id)
+    if service is not None and head is not None:
+        from canonical.models import ChangeOp
+        from canonical.store import ConflictError, NotFoundError, PreconditionError, ValidationError
+
+        try:
+            service.apply(
+                ctx.tenant_id,
+                ctx.user_id,
+                doc_id,
+                head.id,
+                [ChangeOp(op="ResolveATU", target_id=atu_id, value=req.value)],
+                route="review.resolve",
+            )
+        except NotFoundError:
+            raise HTTPException(404, "atu not found")
+        except (ConflictError, PreconditionError, ValidationError) as exc:
+            raise HTTPException(409, str(exc))
+        return {"ok": True, "revisioned": True}
     for q in doc.questions:
         for atu in q.atus:
             if atu.id == atu_id:
@@ -190,6 +213,24 @@ def resolve_item(
     raise HTTPException(404, "atu not found")
 
 
+def _canonical_for(doc_id: str):
+    """(MutationService, head_revision) when a canonical record exists,
+    else (None, None) — legacy documents keep the flat path."""
+    try:
+        from canonical.service import MutationService
+
+        from ..deps import get_canonical, get_tenancy
+
+        cstore = get_canonical()
+        rec = cstore.get_document(doc_id)
+        if rec is None:
+            return None, None
+        head = cstore.get_head_revision(doc_id)
+        return MutationService(cstore, get_tenancy()), head
+    except Exception:
+        return None, None
+
+
 class EditRequest(BaseModel):
     instruction: str
 
@@ -200,20 +241,56 @@ def edit(
     req: EditRequest,
     request: Request,
     access=Depends(doc_access("edit")),
+    store: Store = Depends(get_store),
 ):
-    from core.examdna.editing import apply_ops, summarize
-    from jobs.runner import _gemini_provider
+    from core.examdna.editing import apply_ops, ops_to_change_ops, summarize
+    from jobs.runner import default_providers
 
     ctx, doc = access
-    provider = _gemini_provider()
-    if provider is None or not hasattr(provider, "edit_ops"):
+    planner = next(
+        (p for p in default_providers().reasoning if hasattr(p, "edit_ops")),
+        None,
+    )
+    if planner is None:
         return {
             "ok": False,
             "instruction": req.instruction,
-            "detail": "편집 provider가 없습니다 (GEMINI_API_KEY 필요)",
+            "detail": "편집 provider가 없습니다 (AI API 키 필요)",
             "document_version": doc.version,
         }
-    ops = provider.edit_ops(summarize(doc), req.instruction)
+    service, head = _canonical_for(doc_id)
+    if service is not None and head is not None:
+        # Canonical path: validate plan -> atomic apply (no partial edits)
+        from canonical.models import ChangeOp
+        from canonical.store import ConflictError, NotFoundError, PreconditionError, ValidationError
+
+        ops, skipped = ops_to_change_ops(
+            planner.edit_ops(summarize(doc), req.instruction) or []
+        )
+        if not ops:
+            return {
+                "ok": False,
+                "instruction": req.instruction,
+                "applied": [],
+                "skipped": skipped,
+                "document_version": doc.version,
+            }
+        try:
+            rev = service.apply(
+                ctx.tenant_id, ctx.user_id, doc_id, head.id, ops,
+                route="edits",
+            )
+        except (ConflictError, NotFoundError, PreconditionError, ValidationError) as exc:
+            raise HTTPException(409, str(exc))
+        return {
+            "ok": True,
+            "instruction": req.instruction,
+            "applied": [{"op": o.op, "target": o.target_id} for o in ops],
+            "skipped": skipped,
+            "revision_id": rev.id,
+            "document_version": doc.version,
+        }
+    ops = planner.edit_ops(summarize(doc), req.instruction)
     result = apply_ops(doc, ops)
     if result["applied"]:
         store.save_document(doc)

@@ -257,12 +257,20 @@ class ChangeOp(BaseModel):
         "SetAnswer",
         "SetPoints",
         "SetStyle",
+        "SetBody",
+        "SetChoice",
+        "SetEquation",
+        "AddQuestion",
+        "RemoveQuestion",
     ]
     target_id: Optional[str] = None  # question/atu/object id where relevant
     field: Optional[str] = None
     value: Any = None
     expected_old_digest: Optional[str] = None
     reason: str = ""
+    # Shared-stem groups (WP06): propagate the same field/value to direct
+    # children (parent_id == target question id). Explicit opt-in per op.
+    propagate: bool = False
 
 
 # --- durable jobs ---------------------------------------------------------------

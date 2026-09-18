@@ -270,6 +270,19 @@ class MutationService:
         c_hash, s_hash, sol_hash = revision_hashes(
             doc, head_manifest.digest if head_manifest else None
         )
+        if (c_hash, s_hash, sol_hash) == (
+            head.content_hash,
+            head.style_hash,
+            head.solution_hash,
+        ):
+            # WP06: a no-op change set must not mint an empty revision —
+            # the history only records real state transitions.
+            raise ValidationError("no-op change set: nothing changed")
+
+        # An intentional edit discards prior final status: VERIFIED_FINAL
+        # and past answers must be re-earned by the post-edit checks.
+        if doc.verification.status == "VERIFIED_FINAL":
+            doc.verification.status = "NEEDS_REVIEW"
         rev = Revision(
             document_id=doc_id,
             revision_no=head.revision_no + 1,
@@ -394,6 +407,36 @@ class MutationService:
         )
         return rev
 
+    def redo(
+        self,
+        tenant_id: str,
+        actor: str,
+        doc_id: str,
+        if_match: Optional[str],
+    ) -> Revision:
+        """Redo = restore the pre-undo head. Only valid when the current
+        head is an undo-produced revision (it carries restores_revision_id
+        and its parent is the state that was undone). Otherwise there is
+        nothing to redo — fail closed rather than invent a target."""
+        rec = self._require_active_document(doc_id, tenant_id)
+        expected = self._require_if_match(rec, if_match)
+        head = self.store.get_revision(expected)
+        if head is None or not head.restores_revision_id:
+            raise ConflictError(
+                "NOTHING_TO_REDO",
+                "current head is not an undo revision",
+            )
+        if not head.parent_revision_id:
+            raise ConflictError("NOTHING_TO_REDO", "undo revision has no parent")
+        return self.undo(
+            tenant_id,
+            actor,
+            doc_id,
+            if_match,
+            restores_revision_id=head.parent_revision_id,
+            reason="redo",
+        )
+
     # -- page order / manifest ---------------------------------------------------
 
     def confirm_page_order(
@@ -506,8 +549,84 @@ class MutationService:
                     if not hasattr(q, op.field or ""):
                         raise ValidationError(f"unknown question field {op.field}")
                     self._check_old_digest(getattr(q, op.field), op.expected_old_digest)
-                    setattr(q, op.field, op.value)
+                    value = op.value
+                    if op.field == "type":
+                        from document.models import QuestionType
+
+                        value = QuestionType(str(value))
+                    setattr(q, op.field, value)
                 summary.append({"op": op.op, "question": op.target_id, "field": op.field})
+                if op.propagate:
+                    summary.extend(self._propagate(doc, q, op))
+            elif op.op == "SetBody":
+                from document.models import TextSpan
+
+                q = self._find_question(doc, op.target_id)
+                self._check_old_digest(q.body, op.expected_old_digest)
+                q.body = [TextSpan(text=str(op.value))]
+                summary.append({"op": "SetBody", "question": op.target_id})
+                if op.propagate:
+                    summary.extend(self._propagate(doc, q, op))
+            elif op.op == "SetChoice":
+                from document.models import Choice, TextSpan
+
+                q = self._find_question(doc, op.target_id)
+                label = str(op.field or "")
+                if not label:
+                    raise ValidationError("SetChoice requires field=choice label")
+                choice = next(
+                    (c for c in q.choices if c.label == label), None
+                )
+                if choice is None:
+                    choice = Choice(label=label)
+                    q.choices.append(choice)
+                self._check_old_digest(choice.body, op.expected_old_digest)
+                choice.body = [TextSpan(text=str(op.value))]
+                summary.append(
+                    {"op": "SetChoice", "question": op.target_id, "choice": label}
+                )
+            elif op.op == "SetEquation":
+                q = self._find_question(doc, op.target_id)
+                try:
+                    idx = int(op.field)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    raise ValidationError("SetEquation requires field=index")
+                if not 0 <= idx < len(q.equations):
+                    raise ValidationError(f"equation index {idx} out of range")
+                self._check_old_digest(
+                    q.equations[idx].latex, op.expected_old_digest
+                )
+                q.equations[idx].latex = str(op.value)
+                summary.append(
+                    {"op": "SetEquation", "question": op.target_id, "index": idx}
+                )
+            elif op.op == "AddQuestion":
+                # Missing-question recovery path (WP06): a new question is
+                # appended and re-sorted — never merged into an existing
+                # number/label (that would silently corrupt the target).
+                v = op.value if isinstance(op.value, dict) else {"number": op.value}
+                num = v.get("number")
+                label = str(v.get("label") or num or "")
+                if num is None or not label:
+                    raise ValidationError("AddQuestion requires value.number")
+                if any(
+                    str(q.number) == str(num) or (label and q.label == label)
+                    for q in doc.questions
+                ):
+                    raise ConflictError(
+                        "QUESTION_EXISTS",
+                        f"question {label!r} already exists — refusing to merge",
+                    )
+                from document.models import Question
+
+                q = Question(number=int(num), label=label)
+                doc.questions.append(q)
+                doc.questions.sort(key=lambda x: x.number)
+                summary.append({"op": "AddQuestion", "question": q.id, "label": label})
+            elif op.op == "RemoveQuestion":
+                q = self._find_question(doc, op.target_id)
+                doc.questions = [x for x in doc.questions if x.id != q.id]
+                summary.append({"op": "RemoveQuestion", "question": op.target_id})
             elif op.op == "SetStyle":
                 if op.field not in {"brand_id", "template_id"}:
                     raise ValidationError(f"unknown style field {op.field}")
@@ -526,10 +645,49 @@ class MutationService:
         raise NotFoundError(f"atu {atu_id} not found")
 
     def _find_question(self, doc: Document, qid: Optional[str]):
-        for q in doc.questions:
-            if q.id == qid or str(q.number) == str(qid) or q.label == str(qid):
-                return q
+        """Resolve an op target. Exact id wins; a number/label that maps to
+        more than one question is a conflict — never a silent edit of the
+        wrong question (WP06: label collision must not modify others)."""
+        if qid is None:
+            raise NotFoundError("op target_id is required")
+        target = str(qid)
+        by_id = [q for q in doc.questions if q.id == target]
+        if by_id:
+            return by_id[0]
+        matches = {
+            q.id: q
+            for q in doc.questions
+            if str(q.number) == target or q.label == target
+        }
+        if len(matches) > 1:
+            raise ConflictError(
+                "AMBIGUOUS_TARGET",
+                f"target {target!r} matches multiple questions "
+                f"({sorted(matches)}) — refusing to edit",
+            )
+        if matches:
+            return next(iter(matches.values()))
         raise NotFoundError(f"question {qid} not found")
+
+    def _propagate(self, doc: Document, parent, op: ChangeOp) -> list[dict]:
+        """Apply the same field/value to direct children of a shared-stem
+        parent (parent_id == parent.id). Opt-in via op.propagate — the
+        summary records every propagated target for audit."""
+        from document.models import TextSpan
+
+        out: list[dict] = []
+        for child in doc.questions:
+            if child.parent_id != parent.id:
+                continue
+            if op.op == "SetBody":
+                child.body = [TextSpan(text=str(op.value))]
+            elif op.op == "SetField" and op.field == "figure":
+                if child.figures:
+                    child.figures[0].topology["description"] = str(op.value)
+            else:
+                continue  # only shared-stem fields propagate
+            out.append({"op": "propagate", "question": child.id, "field": op.field})
+        return out
 
     def _check_old_digest(self, current: Any, expected: Optional[str]) -> None:
         if expected is not None and sha256_json(current) != expected:

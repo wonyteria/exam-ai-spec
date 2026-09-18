@@ -355,6 +355,103 @@ def v1_undo(
     return {"data": {"revision": _revision_out(rev)}, "request_id": _request_id()}
 
 
+@router.post("/tenants/{tenant_id}/documents/{doc_id}/redo")
+def v1_redo(
+    tenant_id: str,
+    doc_id: str,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Redo restores the pre-undo head — only valid directly after an
+    undo revision (service enforces; 409 NOTHING_TO_REDO otherwise)."""
+    ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+    rev = _handle(
+        lambda: _service(cstore).redo(
+            tenant_id, ctx.user_id, doc_id, _if_match(request)
+        )
+    )
+    return {"data": {"revision": _revision_out(rev)}, "request_id": _request_id()}
+
+
+class EditPlanRequest(BaseModel):
+    instruction: str
+    strict: bool = False  # reject the whole plan if any op is unmappable
+
+
+@router.post("/tenants/{tenant_id}/documents/{doc_id}/edits")
+def v1_edit(
+    tenant_id: str,
+    doc_id: str,
+    req: EditPlanRequest,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """AI edit plan (WP06): the provider proposes ops; the server
+    re-validates targets/fields and applies the surviving set atomically
+    through MutationService under If-Match CAS — a bad plan can never
+    produce a partial mutation."""
+    ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+    head = cstore.get_head_revision(doc_id)
+    if head is None:
+        _err(404, "NOT_FOUND", "no revision")
+    from document.models import Document
+    from core.examdna.editing import ops_to_change_ops, summarize
+
+    doc = Document.model_validate(head.content_json)
+    planner = _edit_planner()
+    if planner is None:
+        _err(503, "NO_EDIT_PROVIDER", "no provider with edit_ops is configured")
+    raw_ops = planner.edit_ops(summarize(doc), req.instruction)
+    change_ops, skipped = ops_to_change_ops(raw_ops or [])
+    if not change_ops:
+        _err(
+            422,
+            "EMPTY_EDIT_PLAN",
+            "edit plan produced no applicable ops",
+            {"skipped": skipped},
+        )
+    if req.strict and skipped:
+        _err(
+            422,
+            "EDIT_PLAN_REJECTED",
+            "plan contained unmappable ops (strict mode)",
+            {"skipped": skipped},
+        )
+    rev = _handle(
+        lambda: _service(cstore).apply(
+            tenant_id,
+            ctx.user_id,
+            doc_id,
+            _if_match(request),
+            change_ops,
+            route="edits",
+            idempotency_key=_idem(request),
+            request_body=req.model_dump(),
+        )
+    )
+    return {
+        "data": {
+            "revision": _revision_out(rev),
+            "applied": len(change_ops),
+            "skipped": skipped,
+        },
+        "request_id": _request_id(),
+    }
+
+
+def _edit_planner():
+    """First configured reasoning provider that can propose edit ops."""
+    try:
+        from jobs.runner import default_providers
+
+        for p in default_providers().reasoning:
+            if hasattr(p, "edit_ops"):
+                return p
+    except Exception:
+        pass
+    return None
+
+
 # --- issues ----------------------------------------------------------------------
 
 

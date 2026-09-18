@@ -49,6 +49,64 @@ def summarize(doc: Document) -> list[dict]:
     ]
 
 
+def ops_to_change_ops(ops: list[dict]):
+    """Translate provider edit-plan ops into canonical ChangeOps (WP06).
+
+    The server re-validates every op: unknown fields/missing targets are
+    returned in `skipped` with a reason — they are never silently applied
+    or partially merged. The caller applies the surviving set atomically
+    through MutationService.apply."""
+    from canonical.models import ChangeOp
+
+    change_ops: list[ChangeOp] = []
+    skipped: list[dict] = []
+    for op in ops:
+        target = str(op.get("question") or "").strip()
+        field = op.get("field")
+        value = op.get("value")
+        if not target:
+            skipped.append({**op, "reason": "no question target"})
+            continue
+        if field == "body":
+            change_ops.append(
+                ChangeOp(op="SetBody", target_id=target, value=value)
+            )
+        elif field == "choice":
+            label = str(op.get("choice") or "")
+            if not label:
+                skipped.append({**op, "reason": "choice label missing"})
+                continue
+            change_ops.append(
+                ChangeOp(
+                    op="SetChoice", target_id=target, field=label, value=value
+                )
+            )
+        elif field == "points":
+            change_ops.append(
+                ChangeOp(op="SetPoints", target_id=target, value=value)
+            )
+        elif field == "answer":
+            change_ops.append(
+                ChangeOp(op="SetAnswer", target_id=target, value=value)
+            )
+        elif field == "type":
+            change_ops.append(
+                ChangeOp(op="SetField", target_id=target, field="type", value=value)
+            )
+        elif field == "equation":
+            change_ops.append(
+                ChangeOp(
+                    op="SetEquation",
+                    target_id=target,
+                    field=str(op.get("index", 0)),
+                    value=value,
+                )
+            )
+        else:
+            skipped.append({**op, "reason": f"unsupported field {field!r}"})
+    return change_ops, skipped
+
+
 def apply_ops(doc: Document, ops: list[dict]) -> dict:
     """Apply structured edit ops; returns applied/skipped lists."""
     applied: list[dict] = []
