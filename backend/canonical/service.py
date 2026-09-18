@@ -54,6 +54,23 @@ IMPLEMENTED_CHECKERS = {
     "BLOCKING_ISSUES_CLOSED",
 }
 
+# Checks that need a live solver provider (WP04). Without providers they
+# stay NOT_RUN — never marked PASSED by default (fail-closed).
+PROVIDER_CHECKERS = {
+    "SOLVE_TWO_INDEPENDENT_AGREEMENT",
+    "ANSWER_SOLUTION_LOGIC",
+}
+
+_CIRCLED_DIGITS = {
+    "①": "1", "②": "2", "③": "3", "④": "4", "⑤": "5",
+    "⑥": "6", "⑦": "7", "⑧": "8", "⑨": "9", "⑩": "10",
+}
+
+
+def _norm_answer(value: Any) -> str:
+    s = str(value).strip().rstrip(".")
+    return _CIRCLED_DIGITS.get(s, s)
+
 
 def _content_payload(doc: Document, manifest_digest: Optional[str] = None) -> dict:
     """Meaning-bearing content: questions minus answers/solutions, plus
@@ -549,9 +566,14 @@ class MutationService:
 
     # -- checks ----------------------------------------------------------------
 
-    def run_checks(self, revision_id: str) -> list[CheckRun]:
+    def run_checks(
+        self, revision_id: str, providers: Optional[Any] = None
+    ) -> list[CheckRun]:
         """Execute the implemented validators for a revision; unimplemented
-        required checks stay NOT_RUN (fail-closed)."""
+        required checks stay NOT_RUN (fail-closed). Solver-backed checks
+        run only when a solver provider is supplied — two independent runs
+        (run=0 vs run=1 prompts differ, so a cache hit can never pass as a
+        second opinion)."""
         rev = self.store.get_revision(revision_id)
         if rev is None:
             raise NotFoundError("revision not found")
@@ -560,11 +582,26 @@ class MutationService:
         now = time.time()
         results: list[CheckRun] = []
 
+        solvers = [
+            s
+            for s in getattr(providers, "solver", []) or []
+            if hasattr(s, "solve_batch")
+        ]
+        solver_results: Optional[tuple[dict, dict]] = None
+        if solvers and doc.questions:
+            solver_results = self._solver_passes(doc, solvers[0])
+
         for kind in self.store.get_checks(revision_id):
             if kind.check_kind not in IMPLEMENTED_CHECKERS:
-                results.append(kind)
-                continue
-            state, summary = self._run_one(kind.check_kind, doc, rev)
+                if kind.check_kind in PROVIDER_CHECKERS and solver_results is not None:
+                    state, summary = self._solver_check(
+                        kind.check_kind, doc, solver_results
+                    )
+                else:
+                    results.append(kind)
+                    continue
+            else:
+                state, summary = self._run_one(kind.check_kind, doc, rev)
             kind.state = state
             kind.result_summary = summary
             kind.applicable = True
@@ -646,6 +683,97 @@ class MutationService:
                 )
             return CheckState.PASSED, "all questions have field evidence"
         return CheckState.NOT_RUN, "no validator implemented"
+
+    # -- solver-backed verification (WP04) ----------------------------------------
+
+    @staticmethod
+    def _spans_text(spans) -> str:
+        return "".join(s.text for s in spans)
+
+    def _problem_payload(self, q) -> dict:
+        return {
+            "number": q.label or str(q.number),
+            "type": q.type.value if hasattr(q.type, "value") else q.type,
+            "points": q.points,
+            "body": self._spans_text(q.body),
+            "choices": {c.label: self._spans_text(c.body) for c in q.choices},
+            "equations": [
+                eq.latex or eq.hwp_formula or "" for eq in q.equations
+            ],
+            "figures": [
+                {"labels": f.labels, "topology": f.topology} for f in q.figures
+            ],
+        }
+
+    @staticmethod
+    def _batch_answers(candidates) -> dict[str, str]:
+        """{printed_number: normalized_answer} from a solve_batch result."""
+        values = []
+        for cand in candidates or []:
+            v = getattr(cand, "value", None)
+            if isinstance(v, list):
+                values.extend(v)
+        out: dict[str, str] = {}
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            num = item.get("number")
+            if num is None or not item.get("solved"):
+                continue
+            out[str(num).strip()] = _norm_answer(item.get("answer"))
+        return out
+
+    def _solver_passes(self, doc: Document, solver) -> tuple[dict, dict]:
+        """Two independent solver passes. run=1 carries a different prompt,
+        so the second pass is a real call — never a cache hit replayed as
+        an independent opinion (02/A34)."""
+        problems = [self._problem_payload(q) for q in doc.questions]
+        run0 = self._batch_answers(solver.solve_batch(problems, run=0))
+        run1 = self._batch_answers(solver.solve_batch(problems, run=1))
+        return run0, run1
+
+    def _solver_check(
+        self, kind: str, doc: Document, passes: tuple[dict, dict]
+    ) -> tuple[CheckState, str]:
+        run0, run1 = passes
+        if kind == "SOLVE_TWO_INDEPENDENT_AGREEMENT":
+            compared = {
+                n for n in run0 if n in run1
+            }
+            if not compared:
+                return (
+                    CheckState.FAILED,
+                    "no comparable solver results (independent pass missing)",
+                )
+            disagree = sorted(n for n in compared if run0[n] != run1[n])
+            if disagree:
+                return (
+                    CheckState.FAILED,
+                    f"independent solver disagreement on: {disagree}",
+                )
+            return CheckState.PASSED, f"{len(compared)} questions agree across 2 runs"
+        if kind == "ANSWER_SOLUTION_LOGIC":
+            recorded = {
+                (q.label or str(q.number)): _norm_answer(q.answer.value)
+                for q in doc.questions
+                if q.answer is not None and q.answer.value is not None
+            }
+            if not recorded:
+                return CheckState.FAILED, "no recorded answers to verify"
+            compared = {n for n in recorded if n in run0}
+            if not compared:
+                return (
+                    CheckState.FAILED,
+                    "recorded answers and solver output share no question ids",
+                )
+            mismatch = sorted(n for n in compared if recorded[n] != run0[n])
+            if mismatch:
+                return (
+                    CheckState.FAILED,
+                    f"answer/solution mismatch on: {mismatch}",
+                )
+            return CheckState.PASSED, f"{len(compared)} recorded answers match solution"
+        return CheckState.NOT_RUN, "unknown solver check"
 
     def _flag_check_issue(self, rev: Revision, kind: str, summary: str) -> None:
         existing = [

@@ -16,6 +16,10 @@ load_dotenv()
 
 
 def default_providers() -> Providers:
+    """Operational provider chain (WP04): OpenAI is the default server-side
+    adapter when OPENAI_API_KEY is configured. Gemini is NOT auto-inserted —
+    it is an opt-in fallback (EXAMDNA_ENABLE_GEMINI=1) and developer Codex
+    usage stays a separate QA tool, not an operational dependency."""
     providers = Providers(
         ocr=[ocr.get_provider()],
         vision=[vision.get_provider()],
@@ -23,14 +27,38 @@ def default_providers() -> Providers:
         reasoning=[llm.get_provider()],
         solver=[solver.get_provider()],
     )
-    gemini = _gemini_provider()
-    if gemini is not None:
-        providers.ocr.insert(0, gemini)
-        providers.vision.insert(0, gemini)
-        providers.math_ocr.insert(0, gemini)
-        providers.reasoning.insert(0, gemini)
-        providers.solver.insert(0, _gemini_provider("GEMINI_MODEL_SOLVER") or gemini)
+    openai = _openai_provider()
+    if openai is not None:
+        providers.ocr.insert(0, openai)
+        providers.vision.insert(0, openai)
+        providers.math_ocr.insert(0, openai)
+        providers.reasoning.insert(0, openai)
+        providers.solver.insert(
+            0, _openai_provider("OPENAI_MODEL_SOLVER") or openai
+        )
+    if os.environ.get("EXAMDNA_ENABLE_GEMINI") == "1":
+        gemini = _gemini_provider()
+        if gemini is not None:
+            providers.ocr.insert(0, gemini)
+            providers.vision.insert(0, gemini)
+            providers.math_ocr.insert(0, gemini)
+            providers.reasoning.insert(0, gemini)
+            providers.solver.insert(
+                0, _gemini_provider("GEMINI_MODEL_SOLVER") or gemini
+            )
     return providers
+
+
+def _openai_provider(model_env: str = "OPENAI_MODEL"):
+    if not os.environ.get("OPENAI_API_KEY"):
+        return None
+    try:
+        from providers.openai import OpenAIProvider
+
+        model = os.environ.get(model_env) or None
+        return OpenAIProvider(model=model)
+    except ImportError:
+        return None
 
 
 def _gemini_provider(model_env: str = "GEMINI_MODEL"):

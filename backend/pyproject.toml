@@ -11,6 +11,7 @@ dependencies = [
     "pillow",
     "numpy",
     "pypdfium2",
+    "openai>=1.0",
     "google-genai",
     "python-dotenv",
 ]

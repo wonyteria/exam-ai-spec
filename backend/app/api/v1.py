@@ -438,7 +438,13 @@ def v1_run_checks(
     head = cstore.get_head_revision(doc_id)
     if head is None:
         _err(404, "NOT_FOUND", "no revision")
-    checks = _service(cstore).run_checks(head.id)
+    try:
+        from jobs.runner import default_providers
+
+        providers = default_providers()
+    except Exception:
+        providers = None  # checks without solver support stay NOT_RUN
+    checks = _service(cstore).run_checks(head.id, providers=providers)
     return {
         "data": {"checks": [c.model_dump() for c in checks]},
         "request_id": _request_id(),

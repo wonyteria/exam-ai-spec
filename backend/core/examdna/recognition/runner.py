@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from document.models import ATU, ATUKind, Candidate, Question
+from document.models import ATU, ATUKind, Candidate, Question, VerificationStatus
 from ..context import PipelineContext
 
 
@@ -78,11 +78,24 @@ def _ingest_fields(question: Question, provider_name: str, item: dict) -> None:
     data.pop("bbox", None)
     data["number"] = data.pop("label", None)
     for kind, field, value in _decompose(data):
-        atu = ATU(kind=kind, field=field, source=question.source)
-        atu.candidates.append(
+        _field_atu(question, kind, field, value).candidates.append(
             Candidate(provider=provider_name, value=value, confidence=0.9, meta={})
         )
-        question.atus.append(atu)
+
+
+def _field_atu(question: Question, kind: ATUKind, field, value) -> ATU:
+    """Merge same-field candidates into one ATU (WP04): a second provider's
+    value for the same field is another candidate on the existing ATU, not a
+    duplicate ATU. Disagreement marks the ATU CONFLICT."""
+    if field is not None:
+        for a in question.atus:
+            if a.kind == kind and a.field == field:
+                if any(c.value != value for c in a.candidates):
+                    a.status = VerificationStatus.CONFLICT
+                return a
+    atu = ATU(kind=kind, field=field, source=question.source)
+    question.atus.append(atu)
+    return atu
 
 
 def _question_image(ctx: PipelineContext, question: Question):
@@ -95,8 +108,7 @@ def _question_image(ctx: PipelineContext, question: Question):
 def _ingest(question: Question, provider_name: str, cand: Candidate) -> None:
     if cand.meta.get("structured") and isinstance(cand.value, dict):
         for kind, field, value in _decompose(cand.value):
-            atu = ATU(kind=kind, field=field, source=question.source)
-            atu.candidates.append(
+            _field_atu(question, kind, field, value).candidates.append(
                 Candidate(
                     provider=provider_name,
                     value=value,
@@ -104,7 +116,6 @@ def _ingest(question: Question, provider_name: str, cand: Candidate) -> None:
                     meta=cand.meta,
                 )
             )
-            question.atus.append(atu)
         return
 
     kind = cand.meta.get("atu_kind", ATUKind.TEXT_TOKEN)

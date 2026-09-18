@@ -117,7 +117,7 @@ def _execute(
             mode=RevisionMode.RESTORE,
             ops_summary=[{"op": "pipeline_restore"}],
         )
-        service.run_checks(rev.id)
+        service.run_checks(rev.id, providers=ctx.providers)
 
         needs_review = any(
             atu.status
