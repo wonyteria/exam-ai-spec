@@ -15,6 +15,7 @@ export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [flags, setFlags] = useState<LogicFlagGroup[]>([]);
+  const [missingNumbers, setMissingNumbers] = useState<number[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +24,7 @@ export default function ReviewPage() {
       const data = await getReviewItems(id);
       setItems(data.items);
       setFlags(data.logic_flags);
+      setMissingNumbers(data.missing_numbers ?? []);
     } catch (e) {
       setError(String(e));
     }
@@ -47,7 +49,18 @@ export default function ReviewPage() {
       </p>
       {error && <p className="text-red-600">{error}</p>}
 
-      {items.length === 0 && flags.length === 0 && !error && (
+      {missingNumbers.length > 0 && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4">
+          <span className="font-semibold text-red-800">
+            인쇄 번호 누락: {missingNumbers.join(", ")}번
+          </span>
+          <p className="text-sm text-red-700">
+            문항이 통째로 인식되지 않았습니다 — 원본 이미지를 확인해 주세요
+          </p>
+        </div>
+      )}
+
+      {items.length === 0 && flags.length === 0 && missingNumbers.length === 0 && !error && (
         <p className="rounded-lg border border-green-300 bg-green-50 p-4 text-green-800">
           확인할 항목이 없습니다.
         </p>

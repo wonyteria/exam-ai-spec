@@ -33,11 +33,16 @@ class GateReport(BaseModel):
     unverified: int = 0
     hwp_mismatch: int = 0
     document_empty: bool = False
+    missing_numbers: list[int] = []  # detail for missing_object, not a counter
 
     @property
     def passed(self) -> bool:
         return (
-            all(v == 0 for k, v in self.model_dump().items() if k != "document_empty")
+            all(
+                v == 0
+                for k, v in self.model_dump().items()
+                if k not in ("document_empty", "missing_numbers")
+            )
             and not self.document_empty
         )
 
@@ -61,6 +66,23 @@ def evaluate_gate(document: Document, hwp_mismatch: int = 0) -> GateReport:
             report.missing_object += 1
         for flag in question.verification.logic_flags:
             setattr(report, flag.kind, getattr(report, flag.kind) + 1)
+
+    # Printed-number continuity: page extraction can miss a whole question,
+    # leaving a gap (or duplicate) in the numeric label sequence.
+    numbers = [
+        int(q.label)
+        for q in document.questions
+        if (q.label or "").isdigit()
+    ]
+    if numbers:
+        seen: set[int] = set()
+        for n in numbers:
+            if n in seen:
+                report.number_conflict += 1
+            seen.add(n)
+        gaps = sorted(set(range(min(numbers), max(numbers) + 1)) - seen)
+        report.missing_object += len(gaps)
+        report.missing_numbers = gaps
 
     report.document_empty = len(document.questions) == 0
     return report

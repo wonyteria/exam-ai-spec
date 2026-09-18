@@ -57,6 +57,47 @@ def test_logic_flags_counted():
     assert report.missing_object == 1
 
 
+def test_missing_printed_number_detected():
+    """extract_page can drop a whole question — the gap in printed numbering
+    must surface as missing_object so the gate blocks the export."""
+    body = [TextSpan(text="t")]
+    doc = Document(
+        questions=[
+            Question(number=1, label="1", body=body),
+            Question(number=2, label="2", body=body),
+            Question(number=3, label="4", body=body),  # printed 3 was skipped
+        ]
+    )
+    report = evaluate_gate(doc)
+    assert report.missing_object == 1
+    assert report.missing_numbers == [3]
+    assert not report.passed
+
+
+def test_duplicate_printed_number_is_conflict():
+    body = [TextSpan(text="t")]
+    doc = Document(
+        questions=[
+            Question(number=1, label="1", body=body),
+            Question(number=2, label="1", body=body),
+        ]
+    )
+    report = evaluate_gate(doc)
+    assert report.number_conflict == 1
+
+
+def test_non_numeric_labels_skip_continuity_check():
+    body = [TextSpan(text="t")]
+    doc = Document(
+        questions=[
+            Question(number=1, label="논술형 2", body=body),
+            Question(number=2, label="2-1", body=body),
+        ]
+    )
+    report = evaluate_gate(doc)
+    assert report.missing_object == 0
+
+
 def test_verified_document_passes_gate():
     doc = Document(
         questions=[

@@ -44,7 +44,18 @@ export async function getJob(jobId: string): Promise<Job> {
   return res.json();
 }
 
-export async function getReviewItems(docId: string) {
+export interface ReviewItemsResponse {
+  items: ReviewItem[];
+  logic_flags: {
+    question_number: number;
+    question_label?: string;
+    flags: { kind: string; detail: string }[];
+  }[];
+  gate: Record<string, unknown> | null;
+  missing_numbers: number[];
+}
+
+export async function getReviewItems(docId: string): Promise<ReviewItemsResponse> {
   const res = await fetch(`${API}/api/documents/${docId}/review-items`, {
     cache: "no-store",
   });

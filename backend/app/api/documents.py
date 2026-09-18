@@ -63,7 +63,12 @@ def review_items(doc_id: str, store: Store = Depends(get_store)):
         for q in doc.questions
         if q.verification.logic_flags
     ]
-    return {"items": items, "logic_flags": flags}
+    return {
+        "items": items,
+        "logic_flags": flags,
+        "gate": doc.verification.gate,
+        "missing_numbers": (doc.verification.gate or {}).get("missing_numbers", []),
+    }
 
 
 class ResolveRequest(BaseModel):
