@@ -220,6 +220,20 @@ export default function RebrandPage() {
         )}
       </section>
 
+      {manifest && Object.values(manifest.flags ?? {}).some(Boolean) && (
+        <div
+          role="alert"
+          className="mt-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+        >
+          이 파일에서 지원 불가/검토 필요 구조가 발견되었습니다:{" "}
+          {Object.entries(manifest.flags ?? {})
+            .filter(([, v]) => v)
+            .map(([k]) => k)
+            .join(", ")}
+          . 적용은 서버가 fail-closed로 차단합니다.
+        </div>
+      )}
+
       {manifest && (
         <section className="mt-4 rounded border p-4 dark:border-neutral-700">
           <h2 className="font-semibold">2. 변경 후보 확인</h2>

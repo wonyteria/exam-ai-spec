@@ -7,6 +7,7 @@ changed. Anything unexpected aborts before producing output.
 """
 from __future__ import annotations
 
+import copy
 import io
 import re
 import zipfile
@@ -394,7 +395,11 @@ def apply_plan(
     replaced: list[str] = []
     added: list[str] = []
     needs_logo = any(
-        op.op in {RebrandOpKind.ADD_WATERMARK_SHAPE, RebrandOpKind.REPLACE_SELECTED_SHAPE}
+        op.op in {
+            RebrandOpKind.ADD_WATERMARK_SHAPE,
+            RebrandOpKind.REPLACE_SELECTED_SHAPE,
+            RebrandOpKind.REPLACE_CELL_BACKGROUND,
+        }
         for op in plan.operations
     )
     if needs_logo and not logo_png:
@@ -422,6 +427,27 @@ def apply_plan(
     watermark_anc: set[int] = set()                  # anc ids gaining a watermark run
     touched_body_paths: set[str] = set()             # body para paths legitimately mutated
     removed_child_digest: set[str] = set()
+
+    # Contents/header.xml is loaded lazily — only cell-background ops touch
+    # the shared style part, and they do so by *cloning* a borderFill so
+    # every other cell keeps its original fill
+    head_doc: _Doc | None = None
+    head_fills_before: dict[str, str] = {}
+    head_other_before = ""
+    added_fill_ids: list[str] = []
+
+    def _head_doc() -> _Doc:
+        nonlocal head_doc, head_fills_before, head_other_before
+        if head_doc is None:
+            raw = entries.get("Contents/header.xml")
+            if raw is None:
+                raise PlanError(
+                    "PATH_MISS",
+                    "Contents/header.xml missing — cell background fills live there",
+                )
+            head_doc = _Doc("header.xml", raw)
+            head_fills_before, head_other_before = _fill_inventory(head_doc)
+        return head_doc
 
     for op in plan.operations:
         if op.section == "settings.xml":
@@ -454,6 +480,7 @@ def apply_plan(
                     if op.op in {
                         RebrandOpKind.REPLACE_TEXT_RUNS,
                         RebrandOpKind.REPLACE_SELECTED_SHAPE,
+                        RebrandOpKind.REPLACE_CELL_BACKGROUND,
                     }:
                         replace_run_suffixes.setdefault(id(anc), set()).add(host)
                     else:
@@ -491,6 +518,13 @@ def apply_plan(
                 touched.add(path)
             elif op.op is RebrandOpKind.REPLACE_SELECTED_SHAPE:
                 _replace_shape(doc, el, logo_item_id)
+                replaced.append(path)
+                touched.add(path)
+            elif op.op is RebrandOpKind.REPLACE_CELL_BACKGROUND:
+                new_fill = _replace_cell_fill(
+                    _head_doc(), el, op.payload.get("fill_id", ""), logo_item_id
+                )
+                added_fill_ids.append(new_fill)
                 replaced.append(path)
                 touched.add(path)
             elif op.op in {
@@ -559,6 +593,22 @@ def apply_plan(
         touched=touched,
         report=report,
     )
+    if head_doc is not None:
+        # header.xml contract: only *new* borderFill elements may appear —
+        # every pre-existing fill and everything outside borderFills must
+        # be byte-identical
+        fills_after, other_after = _fill_inventory(head_doc)
+        if other_after != head_other_before:
+            report.violations.append("header.xml changed outside borderFills")
+        for fid, dg in head_fills_before.items():
+            if fills_after.get(fid) != dg:
+                report.violations.append(
+                    f"borderFill {fid} changed outside plan"
+                )
+        if set(fills_after) - set(head_fills_before) != set(added_fill_ids):
+            report.violations.append(
+                "unexpected borderFill add/remove in header.xml"
+            )
     report.controls_after = sum(
         len(list(_inventory(d))) for d in docs.values()
     )
@@ -568,6 +618,11 @@ def apply_plan(
             "INVARIANT_VIOLATION",
             "post-mutation structure check failed",
             {"violations": report.violations},
+        )
+
+    if head_doc is not None:
+        entries["Contents/header.xml"] = head_doc.decl + ET.tostring(
+            head_doc.root, encoding="utf-8"
         )
 
     # --- repack ----------------------------------------------------------------------
@@ -787,6 +842,77 @@ def _inventory(doc: _Doc):
     """(path, element) for every control child — identical indexing to the
     scanner so before/after comparison is apples-to-apples."""
     yield from _iter_controls(doc.root)
+
+
+_HH = "http://www.hancom.co.kr/hwpml/2011/head"
+
+
+def _fill_inventory(doc: _Doc) -> tuple[dict[str, str], str]:
+    """(borderFill id -> digest, digest of the doc minus borderFills) —
+    proves a cell-background edit added exactly the recorded fills and
+    changed nothing else in the shared style part."""
+    root_copy = copy.deepcopy(doc.root)
+    fills: dict[str, str] = {}
+    for holder in list(root_copy.iter(f"{{{_HH}}}borderFills")):
+        for bf in list(holder):
+            if _local(bf.tag) == "borderFill":
+                fills[bf.get("id") or "?"] = _el_digest(bf)
+                holder.remove(bf)
+        # itemCnt is recomputed when a fill is cloned — not a violation
+        holder.attrib.pop("itemCnt", None)
+    return fills, _el_digest(root_copy)
+
+
+def _replace_cell_fill(
+    head_doc: _Doc, tc: ET.Element, fill_id: str, logo_item_id: str
+) -> str:
+    """Clone the tc's borderFill with the logo image and repoint ONLY this
+    cell — other cells sharing the original fill keep it byte-identical.
+    Returns the new fill id."""
+    bid = tc.get("borderFillIDRef")
+    if not bid or bid != fill_id:
+        raise PlanError(
+            "DIGEST_MISMATCH",
+            f"cell borderFillIDRef {bid!r} changed since scan (expected {fill_id!r})",
+        )
+    holder = None
+    src_fill = None
+    for h in head_doc.root.iter(f"{{{_HH}}}borderFills"):
+        for bf in list(h):
+            if _local(bf.tag) == "borderFill" and bf.get("id") == bid:
+                holder = h
+                src_fill = bf
+        if src_fill is not None:
+            break
+    if holder is None or src_fill is None:
+        raise PlanError("PATH_MISS", f"borderFill {fill_id} missing in header.xml")
+    clone = copy.deepcopy(src_fill)
+    existing = {
+        bf.get("id")
+        for bf in list(holder)
+        if _local(bf.tag) == "borderFill"
+    }
+    nid = 1
+    while str(nid) in existing:
+        nid += 1
+    imgs = [e for e in clone.iter() if _local(e.tag) == "img"]
+    if not imgs:
+        raise PlanError(
+            "STRUCTURE_UNSUPPORTED", "borderFill has no img payload to replace"
+        )
+    for im in imgs:
+        im.attrib.pop("src", None)
+        im.set("binaryItemIDRef", logo_item_id)
+    clone.set("id", str(nid))
+    holder.append(clone)
+    cnt = holder.get("itemCnt")
+    if cnt is not None:
+        try:
+            holder.set("itemCnt", str(int(cnt) + 1))
+        except ValueError:
+            pass
+    tc.set("borderFillIDRef", str(nid))
+    return str(nid)
 
 
 def _replace_shape(doc: _Doc, el: ET.Element, logo_item_id: str) -> None:

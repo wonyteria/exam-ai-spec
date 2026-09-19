@@ -134,13 +134,24 @@ def build_plan(
 
     for c in selected_titles:
         if (c.evidence or {}).get("object") == "cell_border_fill":
-            raise PlanError(
-                "STRUCTURE_UNSUPPORTED",
-                "title brand is a cell background image in the shared style "
-                "part — not surgically mutable; decline this candidate or "
-                "review manually",
-                {"candidate": c.id, "path": c.path},
+            # the fill lives in header.xml's shared borderFills — the
+            # mutator clones it, swaps the image, and repoints ONLY this
+            # confirmed cell so other cells keep their original fill
+            ops.append(
+                RebrandOperation(
+                    op=RebrandOpKind.REPLACE_CELL_BACKGROUND,
+                    candidate_id=c.id,
+                    section=c.section,
+                    paths=[c.path],
+                    expected_digests={c.path: c.digest},
+                    payload={
+                        "fill_id": (c.evidence or {}).get("fill_id", ""),
+                        "old_img": (c.evidence or {}).get("img", ""),
+                    },
+                    render_mask="header",
+                )
             )
+            continue
         ops.append(
             RebrandOperation(
                 op=_OP_FOR_KIND[c.kind],

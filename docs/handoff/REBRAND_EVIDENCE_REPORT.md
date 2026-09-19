@@ -28,7 +28,7 @@ mutation·실제 Hancom proof·허용 mask 밖 diff 0.
 | 바탕쪽 텍스트/글상자 | TITLE_MASTER_TEXT | 확인 필수 |
 | 본문 상단 단락/글상자 | TITLE_BODY_TOP | 확인 필수 |
 | 머리말/바탕쪽/본문 글상자 그림 | TITLE_IMAGE | 확인 시 REPLACE_SELECTED_SHAPE |
-| 셀 배경 이미지(borderFill, header.xml) | TITLE_IMAGE | **미지원 공개** — 확인 시 `STRUCTURE_UNSUPPORTED`로 fail-closed |
+| 셀 배경 이미지(borderFill, header.xml) — 머리말·바탕쪽·본문 표 | TITLE_IMAGE | 확인 시 REPLACE_CELL_BACKGROUND — 공유 fill을 복제해 확인된 셀만 재지정, 다른 셀의 fill은 바이트 동일 |
 | pageNumCtrl / pageNum | PAGE_NUM_CONTROL | REMOVE_PAGE_NUM_CONTROL |
 | header/footer/master autoNum·fieldBegin PAGE | PAGE_NUM_FIELD | REMOVE_PAGE_NUM_FIELD |
 | 리터럴 번호 텍스트 | LITERAL_PAGE_NUMBER | 확인 필수, 자동 제거 금지 |
@@ -43,10 +43,11 @@ mutation·실제 Hancom proof·허용 mask 밖 diff 0.
 
 ## 검증 결과 (실측)
 
-- `python -m pytest tests/test_hwp_rebranding.py` → **41 passed**
-- `python -m pytest tests/` (전체 백엔드) → **189 passed**
-- `npm run lint` / `npm run build` → 이전 WP09 실행에서 clean/PASS
-  (이번 변경은 백엔드 중심)
+- `python -m pytest tests/test_hwp_rebranding.py` → **42 passed**
+- `python -m pytest tests/` (전체 백엔드) → **190 passed**
+- `npx eslint` (rebrand 페이지+spec) → clean, `npm run build` → PASS
+- `npx playwright test` → **9 passed** (`rebrand.spec.ts` 3개 신규:
+  가져오기→후보 확인→적용 계약, fail-closed 오류 표시, source flag 배너)
 
 ### 실제 Hancom 증거 — `backend/data/local_evidence/` (gitignored)
 
@@ -67,28 +68,30 @@ HWP_PDF_RENDER / PROCESS_LEAK_ZERO — PASSED.
 ### 운영자 확인 시뮬레이션(증거 스크립트의 선택 규칙)
 
 - 외국 조직명(계남·세움·진수·학원·교육원·아카데미)이 든 제목 후보만 확인
-- 시험 메타데이터(고사·학년 표기), 문제 단락, 미지원 구조(셀 배경 로고)는
-  거절 — 거절 후보는 바이트 동일하게 보존되며 census에는 전부 공개됨
+- 시험 메타데이터(고사·학년 표기)와 문제 단락은 거절 — 거절 후보는
+  바이트 동일하게 보존되며 census에는 전부 공개됨
+- 셀 배경 로고(borderFill) 후보는 확인 시 복제-재지정으로 실제 교체
 
 세움: `2026 계남고1` 머리말 셀 → `테스트학원` 교체, `고등 1학년 수학`·
-`2학기 중간고사` 시험 정보 보존, `pageNum` 제거, 세움 로고(셀 배경
-이미지)는 미지원으로 **공개 후 보존**. 진수학: 머리말·본문 글상자의
+`2학기 중간고사` 시험 정보 보존, `pageNum` 제거, 세움 로고 셀 배경
+(`borderFill id=6` → 복제본으로 재지정)은 **실제 브랜드 로고로 교체** —
+원본 fill은 다른 셀을 위해 바이트 동일 보존. 진수학: 머리말·본문 글상자의
 `계남고 1 공통수학2` → `테스트학원` 교체, 시험 정보 보존, 두 개의
 진수학 로고 pic → 브랜드 로고, 중앙 워터마크 병합. 렌더링된
 `{seum,jinsu}/rebrand_page1.png`로 시각 확인 완료.
 
 ## 한계 / BLOCKED·NOT_RUN
 
-- **셀 배경 이미지(borderFill) 브랜딩 교체는 미지원** — 이미지가 공유
-  스타일 파트(`Contents/header.xml`)에 있어 선별 교체가 불안전.
-  센서스에 후보로 공개되고 확인 시 `STRUCTURE_UNSUPPORTED`로 실패
-  차단. 수동 검토 또는 별도 구현 필요.
+- 셀 배경 이미지(borderFill) 교체는 지원 — 단, 참조 fill에 이미지가
+  없거나(`STRUCTURE_UNSUPPORTED`) `header.xml`이 없거나(`PATH_MISS`)
+  스캔 후 `borderFillIDRef`가 바뀐 경우(`DIGEST_MISMATCH`)는
+  여전히 fail-closed.
 - COM 세션은 Hancom 보안/승인 다이얼로그를 watchdog이 닫으며 완주 —
   무인 환경의 다이얼로그 정책 차이는 운영 환경에서 추가 검증 필요.
 - Hancom 버전별 HWPML 렌더 차이, 대용량 다중 섹션 문서는 실물 표본이
   더 필요 — synthetic fixture는 회귀용, 실물 증거는 로컬 전용.
-- 후보 확인 UI(`/rebrand`)는 계약 연결까지 완료 — 브라우저 E2E로의
-  전수 시나리오는 NOT_RUN.
+- `/rebrand` 브라우저 E2E는 3개 시나리오 추가·통과 — 실제 파일을
+  올리는 end-to-end(실제 백엔드+COM)는 로컬 증거 스크립트로만 검증됨.
 
 ## 산출물 위치
 

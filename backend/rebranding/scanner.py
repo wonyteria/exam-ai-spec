@@ -260,8 +260,8 @@ def scan_hwpx(data: bytes, source_name: str = "") -> BrandStructureManifest:
 
     # cell background images live in Contents/header.xml borderFills —
     # branding can hide there (seum-style logo cell). Census them so the
-    # user sees every brand structure; mutating them is not supported yet
-    # (confirming one fails closed in the planner).
+    # user sees every brand structure; the mutator clones the fill and
+    # repoints only the confirmed cell.
     fill_images: dict[str, tuple[str, str]] = {}  # borderFill id -> (img ref, img digest)
     if "Contents/header.xml" in names:
         try:
@@ -440,6 +440,44 @@ def scan_hwpx(data: bytes, source_name: str = "") -> BrandStructureManifest:
                                 digest=_p_dg,
                             )
                         )
+                # body tables: a cell can carry branding as a borderFill
+                # background image (same mechanism as header logo cells).
+                # Skip runs hosting controls/secPr — their tables belong to
+                # header/footer/master inventory, not the body.
+                if list(run.iter(f"{{{HP}}}ctrl")) or run.find(
+                    f".//{{{HP}}}secPr"
+                ) is not None:
+                    continue
+                b_host = f"{sec_label}/body/p[{pi}]/run[{ri}]"
+                for ti, tbl in enumerate(run.iter(f"{{{HP}}}tbl")):
+                    for ci, tc in enumerate(tbl.iter(f"{{{HP}}}tc")):
+                        bid = tc.get("borderFillIDRef")
+                        if not bid or bid not in fill_images:
+                            continue
+                        ref, _img_dg = fill_images[bid]
+                        _b_path = f"{b_host}/tbl[{ti}]/tc[{ci}]"
+                        _b_dg = _el_digest(tc)
+                        manifest.candidates.append(
+                            ControlCandidate(
+                                id=_cand_id(
+                                    CandidateKind.TITLE_IMAGE.value,
+                                    sec_label, _b_path, _b_dg,
+                                ),
+                                kind=CandidateKind.TITLE_IMAGE,
+                                section=sec_label,
+                                path=_b_path,
+                                layer="body",
+                                text_preview="본문 표 셀 배경 이미지(로고 가능성)",
+                                confidence=0.4,
+                                requires_user_confirm=True,
+                                evidence={
+                                    "object": "cell_border_fill",
+                                    "fill_id": bid,
+                                    "img": ref,
+                                },
+                                digest=_b_dg,
+                            )
+                        )
 
     # print-only header/footer tokens (settings.xml)
     if "settings.xml" in names:
@@ -481,44 +519,44 @@ def scan_hwpx(data: bytes, source_name: str = "") -> BrandStructureManifest:
 def _inventory_cell_backgrounds(
     manifest: BrandStructureManifest,
     el: ET.Element,
+    base: str,
     sec_label: str,
     layer: str,
     apply_type: str,
     fill_images: dict[str, tuple[str, str]],
 ) -> None:
     """Table cells whose borderFillIDRef resolves to an image fill carry
-    branding the mutator cannot yet reach (the image lives in
-    header.xml's shared style part). Census them; the planner fails
-    closed if one is confirmed."""
-    for ci, tc in enumerate(el.iter(f"{{{HP}}}tc")):
-        bid = tc.get("borderFillIDRef")
-        if not bid or bid not in fill_images:
-            continue
-        ref, img_dg = fill_images[bid]
-        _bf_path = f"header.xml/borderFill[{bid}]/img[0]"
-        manifest.candidates.append(
-            ControlCandidate(
-                id=_cand_id(
-                    CandidateKind.TITLE_IMAGE.value, sec_label, _bf_path, img_dg
-                ),
-                kind=CandidateKind.TITLE_IMAGE,
-                section="header.xml",
-                path=_bf_path,
-                apply_page_type=apply_type,
-                layer=layer,
-                text_preview="셀 배경 이미지(로고 가능성 — 수동 검토 필요)",
-                confidence=0.4,
-                requires_user_confirm=True,
-                evidence={
-                    "object": "cell_border_fill",
-                    "cell": f"tc[{ci}]",
-                    "fill_id": bid,
-                    "img": ref,
-                    "unsupported": "shared style part — not surgically mutable yet",
-                },
-                digest=img_dg,
+    branding (seum-style logo cells). The fill itself lives in header.xml
+    — the mutator clones it and repoints only the confirmed cell."""
+    for ti, tbl in _nested_tables(el):
+        for ci, tc in enumerate(tbl.iter(f"{{{HP}}}tc")):
+            bid = tc.get("borderFillIDRef")
+            if not bid or bid not in fill_images:
+                continue
+            ref, _img_dg = fill_images[bid]
+            _tc_path = f"{base}/tbl[{ti}]/tc[{ci}]"
+            _tc_dg = _el_digest(tc)
+            manifest.candidates.append(
+                ControlCandidate(
+                    id=_cand_id(
+                        CandidateKind.TITLE_IMAGE.value, sec_label, _tc_path, _tc_dg
+                    ),
+                    kind=CandidateKind.TITLE_IMAGE,
+                    section=sec_label,
+                    path=_tc_path,
+                    apply_page_type=apply_type,
+                    layer=layer,
+                    text_preview="셀 배경 이미지(로고 가능성)",
+                    confidence=0.4,
+                    requires_user_confirm=True,
+                    evidence={
+                        "object": "cell_border_fill",
+                        "fill_id": bid,
+                        "img": ref,
+                    },
+                    digest=_tc_dg,
+                )
             )
-        )
 
 
 def _inventory_header_footer(
@@ -532,7 +570,7 @@ def _inventory_header_footer(
     fill_images: dict[str, tuple[str, str]],
 ) -> None:
     _inventory_cell_backgrounds(
-        manifest, el, sec_label, layer, apply_type, fill_images
+        manifest, el, base, sec_label, layer, apply_type, fill_images
     )
     # title text candidates (header only — footer text is never a title;
     # literal-number footer runs are inventoried separately below)
@@ -710,7 +748,7 @@ def _inventory_master(
     fill_images: dict[str, tuple[str, str]],
 ) -> None:
     _inventory_cell_backgrounds(
-        manifest, el, sec_label, "master_page", "BOTH", fill_images
+        manifest, el, base, sec_label, "master_page", "BOTH", fill_images
     )
     for path, run, text in _sublist_para_runs(el):
         if not text.strip():

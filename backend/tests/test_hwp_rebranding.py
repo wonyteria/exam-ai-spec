@@ -342,8 +342,8 @@ def test_mutate_drawtext_declined_stays_identical():
 
 def test_scan_cell_background_logo_disclosed():
     """seum-style branding: the logo is a table-cell background image in
-    header.xml's borderFills — the census must surface it as an
-    unsupported (confirm-only) structure, never silently miss it."""
+    header.xml's borderFills — the census must surface it as a
+    confirm-only candidate with a resolvable in-section path."""
     m = scanner.scan_hwpx(fixtures.fixture_cell_borderfill_logo(), "bf")
     bf = [
         c for c in m.candidates
@@ -352,18 +352,71 @@ def test_scan_cell_background_logo_disclosed():
     assert len(bf) == 1
     assert bf[0].kind is CandidateKind.TITLE_IMAGE
     assert bf[0].requires_user_confirm is True
-    assert bf[0].section == "header.xml"
+    assert bf[0].section == "section0.xml"
+    assert "/tbl[" in bf[0].path and "/tc[" in bf[0].path
     assert bf[0].evidence["img"] == "image1"
+    assert bf[0].evidence["fill_id"] == "6"
 
 
-def test_plan_cell_background_confirm_fails_closed():
-    """Confirming a cell-background brand fails closed — the shared style
-    part is not surgically mutable yet."""
-    m = scanner.scan_hwpx(fixtures.fixture_cell_borderfill_logo(), "bf")
-    ids = [c.id for c in m.candidates]
-    with pytest.raises(PlanError) as ei:
-        planner.build_plan(m, _req(m, ids=ids))
-    assert ei.value.code == "STRUCTURE_UNSUPPORTED"
+def test_mutate_cell_background_clones_fill_only_for_confirmed_cell():
+    """Confirming a cell-background brand clones its borderFill with the
+    logo and repoints ONLY that cell — sibling fills stay byte-identical."""
+    data = fixtures.fixture_cell_borderfill_logo()
+    m = scanner.scan_hwpx(data, "bf")
+    ids = [
+        c.id for c in m.candidates
+        if c.kind is not CandidateKind.TITLE_BODY_TOP
+    ]
+    out, rep = _run(data, m, _req(m, ids=ids))
+    assert rep.passed is True
+    sect = _section_root(out)
+    tcs = list(sect.iter(f"{{{HP}}}tc"))
+    assert tcs[0].get("borderFillIDRef") != "6"      # repointed to the clone
+    assert tcs[1].get("borderFillIDRef") == "1"      # sibling cell untouched
+    head = ET.fromstring(
+        zipfile.ZipFile(io.BytesIO(out)).read("Contents/header.xml")
+    )
+    HH = "http://www.hancom.co.kr/hwpml/2011/head"
+    fills = {bf.get("id"): bf for bf in head.iter(f"{{{HH}}}borderFill")}
+    # original fill 6 still points at the old image; the clone carries the logo
+    xml_head = ET.tostring(head, encoding="unicode")
+    clone = fills[tcs[0].get("borderFillIDRef")]
+    clone_xml = ET.tostring(clone, encoding="unicode")
+    assert 'binaryItemIDRef="rebrand_logo"' in clone_xml
+    orig_xml = ET.tostring(fills["6"], encoding="unicode")
+    assert "image1" in orig_xml
+    assert 'itemCnt="2"' in xml_head
+
+
+def test_body_table_cell_background_scanned_and_replaced():
+    """A logo cell inside a BODY paragraph's table is censused at
+    body/p[i]/run[j]/tbl[k]/tc[m] and replaced with the same clone-fill
+    surgery — header cell backgrounds aren't the only place it can hide."""
+    data = fixtures.fixture_body_cell_borderfill()
+    m = scanner.scan_hwpx(data, "btf")
+    bf = [
+        c for c in m.candidates
+        if (c.evidence or {}).get("object") == "cell_border_fill"
+    ]
+    assert len(bf) == 1
+    assert bf[0].path.startswith("section0.xml/body/p[")
+    assert "/run[" in bf[0].path and "/tbl[" in bf[0].path and "/tc[" in bf[0].path
+    ids = [c.id for c in m.candidates if c.kind is not CandidateKind.TITLE_BODY_TOP]
+    out, rep = _run(data, m, _req(m, ids=ids))
+    assert rep.passed is True
+    sect = _section_root(out)
+    tcs = list(sect.iter(f"{{{HP}}}tc"))
+    assert tcs[0].get("borderFillIDRef") != "6"
+    assert tcs[1].get("borderFillIDRef") == "1"
+    head = ET.fromstring(
+        zipfile.ZipFile(io.BytesIO(out)).read("Contents/header.xml")
+    )
+    HH = "http://www.hancom.co.kr/hwpml/2011/head"
+    fills = {f.get("id"): f for f in head.iter(f"{{{HH}}}borderFill")}
+    clone_xml = ET.tostring(fills[tcs[0].get("borderFillIDRef")], encoding="unicode")
+    assert 'binaryItemIDRef="rebrand_logo"' in clone_xml
+    assert "image1" in ET.tostring(fills["6"], encoding="unicode")
+    assert "본문 문제 유지" in _section_text(out)
 
 
 def test_plan_cell_background_declined_preserves_fill():

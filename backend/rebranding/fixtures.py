@@ -439,6 +439,53 @@ def fixture_cell_borderfill_logo() -> bytes:
     )
 
 
+def fixture_body_cell_borderfill() -> bytes:
+    """Body-table branding: the logo cell sits inside a *body* paragraph's
+    table, not the header — same borderFill mechanism resolved under
+    body/p[i]/run[j]/tbl[k]/tc[m]."""
+    body_tbl = (
+        '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" '
+        'columnBreak="0" merged="0"><hp:run charPrIDRef="0">'
+        '<hp:tbl id="2" zOrder="0" numberingType="TABLE" '
+        'textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" '
+        'rowCnt="1" colCnt="2" borderFillIDRef="1">'
+        '<hp:sz width="9000" widthRelTo="PARA" height="900" '
+        'heightRelTo="ABSOLUTE" protect="0"/>'
+        '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" '
+        'vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" '
+        'horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+        "<hp:tr>"
+        '<hp:tc name="" header="0" borderFillIDRef="6">'
+        + _sublist(_p(""))
+        + '<hp:cellAddr colAddr="0" rowAddr="0"/>'
+        '<hp:cellSpan colSpan="1" rowSpan="1"/>'
+        '<hp:cellSz width="1500" height="900"/></hp:tc>'
+        '<hp:tc name="" header="0" borderFillIDRef="1">'
+        + _sublist(_p("타학원 로고 표"))
+        + '<hp:cellAddr colAddr="1" rowAddr="0"/>'
+        '<hp:cellSpan colSpan="1" rowSpan="1"/>'
+        '<hp:cellSz width="7500" height="900"/></hp:tc>'
+        "</hp:tr></hp:tbl><hp:t/></hp:run></hp:p>"
+    )
+    head_with_fill = f"""{_DECL}
+<hh:head {_NS} version="1.2" secCnt="1"><hh:beginNum page="1" footnote="1" endnote="1" pic="1" tbl="1" equation="1"/><hh:refList><hh:borderFills itemCnt="1">
+<hh:borderFill id="6" type="SOLID"><hh:fillBrush><hc:brush><hc:img binaryItemIDRef="image1" mode="TILE"/></hc:brush></hh:fillBrush></hh:borderFill>
+</hh:borderFills></hh:refList></hh:head>"""
+    sec = section_xml(
+        controls=[header_xml("다른학원 시험지")],
+        body_paras=[],
+        raw_body=[body_tbl, _p("본문 문제 유지")],
+    )
+    return build_hwpx(
+        [sec],
+        settings=_SETTINGS_CLEAN,
+        extra_files={
+            "Contents/header.xml": head_with_fill.encode(),
+            "BinData/image1.png": b"\x89PNG\x00",
+        },
+    )
+
+
 def fixture_encrypted() -> bytes:
     """settings.xml flagged protected -> fail closed."""
     sec = section_xml(controls=[], body_paras=["본문"])
