@@ -12,6 +12,7 @@ from canonical.models import JobV2, SourceAsset, SourceManifest, SourcePage
 from canonical.store import CanonicalStore
 from canonical.service import MutationService
 from document.models import Document, Page, PageImage
+from document.page_roles import extract_pdf_page_text, suggest_page_role
 from jobs.store import Store
 from jobs.worker import run_once
 from storage.local import LocalObjectStore, sanitize_filename
@@ -226,6 +227,15 @@ async def upload(
 
         if entry["mime"] == "application/pdf":
             for p in range(entry["pdf_pages"]):
+                # AT-061: classify the page role up front — an answer/score
+                # sheet must surface in the manifest, never silently become
+                # a question page. Scans without a text layer stay UNKNOWN
+                # until the user confirms a role.
+                role, _ev = suggest_page_role(
+                    extract_pdf_page_text(entry["data"], p),
+                    p,
+                    entry["pdf_pages"],
+                )
                 source_pages.append(
                     SourcePage(
                         tenant_id=ctx.tenant_id,
@@ -235,6 +245,8 @@ async def upload(
                         original_sha256=entry["sha256"],
                         original_name=entry["original_name"],
                         upload_index=entry["upload_index"],
+                        page_role=role,
+                        role_source="AUTO",
                     )
                 )
         else:
@@ -279,6 +291,8 @@ async def upload(
                 original_name=sp.original_name,
                 width=float(sp.width_px) if sp.width_px else None,
                 height=float(sp.height_px) if sp.height_px else None,
+                page_role=sp.page_role,
+                role_source=sp.role_source,
             )
         )
 

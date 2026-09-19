@@ -181,6 +181,13 @@ export default function UploadPage() {
         </div>
       </Modal>
 
+      <Link
+        href="/rebrand"
+        className="w-full max-w-2xl rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-2 text-center text-sm text-blue-700 hover:bg-blue-50"
+      >
+        외부 학원 HWP/HWPX 브랜드 변경 →
+      </Link>
+
       {docs.length > 0 && (
         <div className="w-full max-w-2xl">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">문서 보관함</h2>

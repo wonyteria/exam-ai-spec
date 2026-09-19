@@ -182,6 +182,8 @@ def _page_out(page, manifest_order: list[str]) -> dict:
         "manifest_position": order_pos,
         "transform": page.transform,
         "uncertain_regions": page.uncertain_regions,
+        "page_role": getattr(page, "page_role", "UNKNOWN"),
+        "role_source": getattr(page, "role_source", "AUTO"),
     }
 
 
@@ -265,6 +267,46 @@ def v1_confirm_page_order(
                 "confirmed_by": manifest.confirmed_by,
                 "confirmed_at": manifest.confirmed_at,
             },
+            "revision": _revision_out(rev),
+        },
+        "request_id": _request_id(),
+    }
+
+
+class PageRoleRequest(BaseModel):
+    page_role: str
+
+
+@router.patch("/tenants/{tenant_id}/documents/{doc_id}/pages/{source_page_id}/role")
+def v1_set_page_role(
+    tenant_id: str,
+    doc_id: str,
+    source_page_id: str,
+    req: PageRoleRequest,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """User-confirmed page role (AT-061). An answer/score page must be
+    explicitly designated — never silently a question page or dropped."""
+    ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+
+    def go():
+        return _service(cstore).set_page_role(
+            tenant_id,
+            ctx.user_id,
+            doc_id,
+            _if_match(request),
+            source_page_id,
+            req.page_role,
+        )
+
+    rev = _handle(go)
+    sp = cstore.get_source_page(source_page_id)
+    return {
+        "data": {
+            "source_page_id": source_page_id,
+            "page_role": sp.page_role if sp else req.page_role,
+            "role_source": sp.role_source if sp else "USER",
             "revision": _revision_out(rev),
         },
         "request_id": _request_id(),

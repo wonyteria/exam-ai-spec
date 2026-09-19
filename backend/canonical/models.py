@@ -62,6 +62,17 @@ class SourceAsset(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+class PageRole(str, Enum):
+    """Semantic role of a source page. An answer/score sheet is NEVER a
+    question page — it must surface in the manifest and be user-confirmable
+    so it is never silently dropped or mis-set."""
+    QUESTION = "QUESTION"
+    ANSWER_KEY = "ANSWER_KEY"
+    COVER = "COVER"
+    BLANK = "BLANK"
+    UNKNOWN = "UNKNOWN"
+
+
 class SourcePage(BaseModel):
     """One logical page of the exam. Upload order and exam order are
     separate — ordering lives in the SourceManifest."""
@@ -75,6 +86,11 @@ class SourcePage(BaseModel):
     original_sha256: str
     original_name: str = ""
     upload_index: int = 0
+    # Page-role classification (AT-061): AUTO = heuristic suggestion,
+    # USER = explicitly confirmed by the user. UNKNOWN must not be
+    # silently treated as a question page downstream.
+    page_role: str = PageRole.UNKNOWN.value
+    role_source: str = "AUTO"  # AUTO | USER
 
 
 class SourceManifest(BaseModel):

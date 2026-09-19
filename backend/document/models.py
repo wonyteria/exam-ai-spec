@@ -186,6 +186,11 @@ class Page(BaseModel):
     # Regions where trace removal could not be separated from print with
     # confidence — kept for original comparison / human review (S01).
     uncertain_regions: list[dict[str, Any]] = Field(default_factory=list)
+    # Semantic role from the source manifest (AT-061): QUESTION |
+    # ANSWER_KEY | COVER | BLANK | UNKNOWN. An answer/score page is never
+    # silently treated as a question page; UNKNOWN forces confirmation.
+    page_role: str = "UNKNOWN"
+    role_source: str = "AUTO"  # AUTO | USER
 
 
 class ExamMetadata(BaseModel):

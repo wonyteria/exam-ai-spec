@@ -410,3 +410,138 @@ export async function confirmPageOrder(
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// --- imported HWP/HWPX rebranding (REQ-16) ---------------------------------------
+
+export interface RebrandCandidate {
+  id: string;
+  kind: string;
+  section: string;
+  path: string;
+  apply_page_type: string;
+  layer: string;
+  text_preview: string;
+  confidence: number;
+  requires_user_confirm: boolean;
+  digest: string;
+}
+
+export interface RebrandManifest {
+  source_sha256: string;
+  source_format: string;
+  section_count: number;
+  header_variants: string[];
+  footer_variants: string[];
+  master_page_count: number;
+  existing_watermark_count: number;
+  candidates: RebrandCandidate[];
+  flags: Record<string, boolean>;
+}
+
+export interface RebrandImportResult {
+  document_id: string;
+  source_format: string;
+  source_sha256: string;
+  revision_id: string;
+  hancom_required: boolean;
+}
+
+export async function rebrandImport(
+  tenantId: string,
+  file: File,
+): Promise<RebrandImportResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/rebrand/imports`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export async function rebrandLogo(
+  tenantId: string,
+  file: File,
+): Promise<{ logo_sha256: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/rebrand/logo`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export async function getRebrandCandidates(
+  tenantId: string,
+  docId: string,
+): Promise<{ manifest: RebrandManifest; needs_confirmation: string[]; fail_closed_flags: Record<string, boolean> }> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/rebrand/candidates`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export interface RebrandApplyResult {
+  revision: { id: string; revision_no: number };
+  artifact: { id: string; artifact_sha256: string; state: string };
+  invariant: {
+    passed: boolean;
+    violations: string[];
+    removed_paths: string[];
+    replaced_paths: string[];
+    added_paths: string[];
+  };
+  proof: { checks: Record<string, string> };
+  worker_unavailable: boolean;
+}
+
+export async function rebrandApply(
+  tenantId: string,
+  docId: string,
+  body: {
+    academy_name: string;
+    confirmed_candidate_ids: string[];
+    remove_page_numbers: boolean;
+    watermark_enabled: boolean;
+    watermark_replace_existing?: boolean;
+    logo_sha256?: string;
+  },
+): Promise<RebrandApplyResult> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/rebrand/apply`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export async function setPageRole(
+  tenantId: string,
+  docId: string,
+  sourcePageId: string,
+  role: string,
+): Promise<unknown> {
+  const ifMatch = await getHeadRevisionId(tenantId, docId);
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/pages/${sourcePageId}/role`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(ifMatch ? { "If-Match": ifMatch } : {}),
+      },
+      body: JSON.stringify({ page_role: role }),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}

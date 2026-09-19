@@ -18,6 +18,7 @@ from .models import (
     IdempotencyRecord,
     Issue,
     IssueState,
+    PageRole,
     Revision,
     RevisionMode,
     SourceManifest,
@@ -510,6 +511,68 @@ class MutationService:
             )
         )
         return manifest, rev
+
+    def set_page_role(
+        self,
+        tenant_id: str,
+        actor: str,
+        doc_id: str,
+        if_match: Optional[str],
+        source_page_id: str,
+        role: str,
+    ) -> Revision:
+        """User-confirmed page role (AT-061). An answer/score page is never
+        silently dropped or treated as a question page — the confirmed role
+        is recorded on the source page and bound to a new revision so the
+        manifest's semantic page set stays auditable."""
+        valid = {r.value for r in PageRole}
+        if role not in valid:
+            raise ValidationError(
+                "unknown page_role",
+                {"received": role, "allowed": sorted(valid)},
+            )
+        rec = self._require_active_document(doc_id, tenant_id)
+        expected = self._require_if_match(rec, if_match)
+        sp = self.store.get_source_page(source_page_id)
+        if sp is None or sp.document_id != doc_id or sp.tenant_id != tenant_id:
+            raise NotFoundError("source page not found")
+        updated = self.store.set_source_page_role(source_page_id, role, "USER")
+        head = self.store.get_revision(expected)
+        assert head is not None
+        doc = Document.model_validate(head.content_json)
+        for p in doc.pages:
+            if p.source_page_id == source_page_id:
+                p.page_role = role
+                p.role_source = "USER"
+        rev = self.create_revision(
+            doc,
+            tenant_id,
+            actor,
+            mode=RevisionMode.EDIT,
+            ops_summary=[
+                {
+                    "op": "set_page_role",
+                    "source_page_id": source_page_id,
+                    "role": role,
+                }
+            ],
+            manifest_id=head.manifest_id,
+        )
+        self.tenancy.audit(
+            AuditEvent(
+                tenant_id=tenant_id,
+                user_id=actor,
+                action="document.set_page_role",
+                object_type="source_page",
+                object_id=source_page_id,
+                detail={
+                    "document_id": doc_id,
+                    "role": role,
+                    "revision_id": rev.id,
+                },
+            )
+        )
+        return rev
 
     # -- op application ---------------------------------------------------------
 

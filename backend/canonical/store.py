@@ -89,7 +89,9 @@ CREATE TABLE IF NOT EXISTS source_pages (
     height_px INTEGER,
     original_sha256 TEXT NOT NULL,
     original_name TEXT NOT NULL DEFAULT '',
-    upload_index INTEGER NOT NULL DEFAULT 0
+    upload_index INTEGER NOT NULL DEFAULT 0,
+    page_role TEXT NOT NULL DEFAULT 'UNKNOWN',
+    role_source TEXT NOT NULL DEFAULT 'AUTO'
 );
 CREATE INDEX IF NOT EXISTS idx_source_pages_doc ON source_pages(document_id);
 CREATE TABLE IF NOT EXISTS source_manifests (
@@ -290,6 +292,18 @@ class CanonicalStore:
             self._conn.execute(
                 "ALTER TABLE revisions ADD COLUMN manifest_id TEXT"
             )
+        sp_cols = {
+            r[1]
+            for r in self._conn.execute("PRAGMA table_info(source_pages)")
+        }
+        if "page_role" not in sp_cols:
+            self._conn.execute(
+                "ALTER TABLE source_pages ADD COLUMN page_role TEXT NOT NULL DEFAULT 'UNKNOWN'"
+            )
+        if "role_source" not in sp_cols:
+            self._conn.execute(
+                "ALTER TABLE source_pages ADD COLUMN role_source TEXT NOT NULL DEFAULT 'AUTO'"
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -466,8 +480,8 @@ class CanonicalStore:
                 """INSERT INTO source_pages
                    (id, tenant_id, document_id, asset_id, pdf_page_index,
                     width_px, height_px, original_sha256, original_name,
-                    upload_index)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    upload_index, page_role, role_source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     page.id,
                     page.tenant_id,
@@ -479,6 +493,8 @@ class CanonicalStore:
                     page.original_sha256,
                     page.original_name,
                     page.upload_index,
+                    page.page_role,
+                    page.role_source,
                 ),
             )
         return page
@@ -491,6 +507,18 @@ class CanonicalStore:
                 "UPDATE source_pages SET width_px=?, height_px=? WHERE id=?",
                 (width_px, height_px, page_id),
             )
+
+    def set_source_page_role(
+        self, page_id: str, role: str, source: str
+    ) -> Optional[SourcePage]:
+        """User-confirmed (or re-classified) page role. Returns the updated
+        row; role changes are recorded, never silently overwritten."""
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE source_pages SET page_role=?, role_source=? WHERE id=?",
+                (role, source, page_id),
+            )
+        return self.get_source_page(page_id)
 
     def get_source_page(self, page_id: str) -> Optional[SourcePage]:
         row = self._conn.execute(
