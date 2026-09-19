@@ -39,6 +39,30 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
   });
 }
 
+async function throwApiError(res: Response): Promise<never> {
+  const status = res.status;
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    body = "";
+  }
+  let code = "";
+  let message = body || `HTTP ${status}`;
+  try {
+    const parsed = JSON.parse(body);
+    code = parsed?.detail?.error?.code || parsed?.error?.code || "";
+    message =
+      parsed?.detail?.error?.message ||
+      parsed?.detail ||
+      parsed?.error?.message ||
+      message;
+  } catch {
+    /* non-json */
+  }
+  throw new Error(`[${status}${code ? ` ${code}` : ""}] ${String(message)}`);
+}
+
 // --- auth / academies -----------------------------------------------------
 
 export interface Me {
@@ -80,7 +104,7 @@ export interface Tenant {
 
 export async function listTenants(): Promise<Tenant[]> {
   const res = await apiFetch("/api/tenants", { cache: "no-store" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return (await res.json()).tenants;
 }
 
@@ -90,7 +114,7 @@ export async function createTenant(name: string): Promise<Tenant> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -100,7 +124,7 @@ export async function switchTenant(tenantId: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tenant_id: tenantId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   setActiveTenant(tenantId);
 }
 
@@ -113,13 +137,13 @@ export async function createInvite(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function acceptInvite(code: string): Promise<{ tenant_id: string }> {
   const res = await apiFetch(`/api/invites/${code}/accept`, { method: "POST" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -136,7 +160,7 @@ export interface DocumentSummary {
 
 export async function listDocuments(): Promise<DocumentSummary[]> {
   const res = await apiFetch("/api/documents", { cache: "no-store" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return (await res.json()).documents;
 }
 
@@ -174,13 +198,13 @@ export async function uploadFiles(files: File[]): Promise<UploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   const res = await apiFetch("/api/uploads", { method: "POST", body: form });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function getJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -199,7 +223,7 @@ export async function getReviewItems(docId: string): Promise<ReviewItemsResponse
   const res = await apiFetch(`/api/documents/${docId}/review-items`, {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -209,7 +233,7 @@ export async function resolveItem(docId: string, atuId: string, value: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ value }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -231,16 +255,35 @@ export async function sendEdit(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ instruction }),
   });
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
-export async function exportDoc(docId: string, format: string) {
+export async function exportDoc(
+  docId: string,
+  format: string,
+  output_mode = "STUDENT_WITH_ENDNOTES",
+) {
   const res = await apiFetch(`/api/documents/${docId}/exports`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ format }),
+    body: JSON.stringify({ format, output_mode }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function cancelJob(jobId: string) {
+  const res = await apiFetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function retryJobV1(tenantId: string, jobId: string) {
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/jobs/${jobId}/retry`, {
+    method: "POST",
+  });
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -284,6 +327,50 @@ async function getHeadRevisionId(
   if (!res.ok) return null;
   const data = await res.json();
   return data?.data?.head_revision?.id ?? null;
+}
+
+export async function getHeadRevisionForTenant(tenantId: string, docId: string) {
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/documents/${docId}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res);
+  const data = await res.json();
+  return data?.data?.head_revision ?? null;
+}
+
+export async function undoDoc(tenantId: string, docId: string, restoresRevisionId: string) {
+  const head = await getHeadRevisionForTenant(tenantId, docId);
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/documents/${docId}/undo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(head?.id ? { "If-Match": head.id } : {}),
+    },
+    body: JSON.stringify({ restores_revision_id: restoresRevisionId, reason: "ui_undo" }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function redoDoc(tenantId: string, docId: string) {
+  const head = await getHeadRevisionForTenant(tenantId, docId);
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/documents/${docId}/redo`, {
+    method: "POST",
+    headers: {
+      ...(head?.id ? { "If-Match": head.id } : {}),
+    },
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function listRevisions(tenantId: string, docId: string) {
+  const res = await apiFetch(`/api/v1/tenants/${tenantId}/documents/${docId}/revisions`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res);
+  const data = await res.json();
+  return data?.data?.revisions ?? [];
 }
 
 export async function getDocPages(

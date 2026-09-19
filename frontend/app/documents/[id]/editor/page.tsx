@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { API, sendEdit } from "@/lib/api";
+import { activeTenant, API, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -11,6 +11,17 @@ export default function EditorPage() {
   const [busy, setBusy] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
   const [listKey, setListKey] = useState(0);
+  const [busyUndo, setBusyUndo] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [undoTarget, setUndoTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    const tenant = activeTenant();
+    if (!tenant) return;
+    void listRevisions(tenant, id)
+      .then((revs) => setUndoTarget(revs.length >= 2 ? revs[revs.length - 2]?.id : null))
+      .catch(() => setUndoTarget(null));
+  }, [id, listKey]);
 
   const submit = async () => {
     if (!instruction.trim() || busy) return;
@@ -40,7 +51,7 @@ export default function EditorPage() {
 
   return (
     <main className="flex h-screen flex-col">
-      <div className="grid flex-1 grid-cols-[1fr_2fr_1fr] divide-x">
+      <div className="grid flex-1 grid-cols-1 divide-y md:grid-cols-[1fr_2fr_1fr] md:divide-x md:divide-y-0">
         <aside className="overflow-auto p-4">
           <h2 className="mb-3 font-semibold">문제 목록</h2>
           <QuestionList key={listKey} docId={id} />
@@ -75,7 +86,9 @@ export default function EditorPage() {
               placeholder="자연어로 수정 요청"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={() => setComposing(false)}
+              onKeyDown={(e) => e.key === "Enter" && !composing && submit()}
             />
             <button
               onClick={submit}
@@ -83,6 +96,44 @@ export default function EditorPage() {
               className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50"
             >
               요청
+            </button>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={async () => {
+                const tenant = activeTenant();
+                if (!tenant || !undoTarget || busyUndo) return;
+                setBusyUndo(true);
+                try {
+                  await undoDoc(tenant, id, undoTarget);
+                  setPreviewKey((k) => k + 1);
+                  setListKey((k) => k + 1);
+                } finally {
+                  setBusyUndo(false);
+                }
+              }}
+              disabled={busyUndo || !undoTarget}
+              className="rounded border px-3 py-1 text-xs disabled:opacity-50"
+            >
+              Undo
+            </button>
+            <button
+              onClick={async () => {
+                const tenant = activeTenant();
+                if (!tenant || busyUndo) return;
+                setBusyUndo(true);
+                try {
+                  await redoDoc(tenant, id);
+                  setPreviewKey((k) => k + 1);
+                  setListKey((k) => k + 1);
+                } finally {
+                  setBusyUndo(false);
+                }
+              }}
+              disabled={busyUndo}
+              className="rounded border px-3 py-1 text-xs disabled:opacity-50"
+            >
+              Redo
             </button>
           </div>
         </aside>

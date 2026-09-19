@@ -29,29 +29,34 @@ Commit base: `71449af` (WP07)
 
 경로: `backend/data/wp08_proof`
 
+- `proof_manifest.json` (독립 로그/manifest)
+  - 단계 반환값: `open_hwpx=true`, `saveas_hwp=true`, `reopen_hwp=true`, `saveas_pdf=true`
+  - 요청 revision: `wp08-proof-revision`
+  - tenant: `wp08-proof-tenant`
 - `proof_input.hwpx`
-  - sha256: `0c0ddecdbe3c7cfd7d291276f3c7e78cd06604c53d149e741a5c9f0b5f3b1ee0`
-  - bytes: `5453`
+  - sha256: `3423317b578f14f82fd79cf97a2e22e482ed503208c92c5986cb42b3ff92a996`
+  - bytes: `5618`
 - `proof_output.hwp`
-  - sha256: `ec684ad431bb58566af7ebcfaf9f378efdcc35b054167baf8f1dff214c57c8f8`
-  - bytes: `14336`
+  - sha256: `a92c4cd38a8f857b16fa84e2e19cd4357ae99eca32607abea19ff10ea5080559`
+  - bytes: `14848`
 - `proof_output.pdf`
-  - sha256: `724c0622fc313e99f42e1b884c47cc0740636102a22cdf9f3e7027616e9fe130`
-  - bytes: `14108`
+  - sha256: `445980eda21f113b34bfadb19783c7899ebaf8e36ea146a6400f2271f9ed2680`
+  - bytes: `16139`
 
 ## 확인된 fail-closed 동작
 
 - HWP worker 미가용: `503 HWP_WORKER_UNAVAILABLE` (format 차단)
 - proof/hash 불일치: final download `409 HASH_MISMATCH`
 - stale/missing proof 또는 non-final 상태: 기존 `export_final` / final download 게이트 유지
+- artifact 생성 시 proof manifest를 별도 blob으로 저장하고 tenant/document/revision/content/style/solution hash를 함께 기록
 
 ## 아직 남은 항목 (사실 상태)
 
 - **BLOCKED/NOT_RUN**
   - 실제 Hancom COM 재열기 결과(`Open` true) 콘솔 로그를 세션 타임아웃 제약 내에 수집하지 못함 (산출물 파일은 생성됨)
-  - 벡터 도형(`hp:rect`/`hp:line`) 출력 및 실제 렌더 정렬 비교(WP07 pending 항목)
+  - 벡터 도형(`hp:rect`/`hp:line`) 자체 출력은 구현/테스트 완료, 한컴 실렌더 픽셀 비교 자동화는 미완료
   - 브라우저 E2E(팝업/반응형/접근성) 및 WP09 여정
-  - frontend 전체 `lint/build` 완료 로그 (명령이 세션 10초 제한으로 background 전환되어 결과 미회수)
+  - frontend lint/build/e2e는 실행 로그 회수했으나, WP09 전체 시나리오(403/404/409/quota/offline 전수)는 미완료
 
 ## 요약
 

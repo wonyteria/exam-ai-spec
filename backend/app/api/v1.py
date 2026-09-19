@@ -636,6 +636,29 @@ def v1_create_artifact(
         _service(cstore).record_proof(
             art.id, checks=checks, worker_identity=(proof or {}).get("worker_identity", "")
         )
+        proof_manifest = {
+            "tenant_id": tenant_id,
+            "document_id": doc_id,
+            "artifact_id": art.id,
+            "format": fmt,
+            "request_revision_id": rev.id,
+            "artifact_revision_id": art.revision_id,
+            "content_hash": art.content_hash,
+            "style_hash": art.style_hash,
+            "solution_hash": art.solution_hash,
+            "artifact_sha256": art.artifact_sha256,
+            "proof": proof,
+            "checks": checks,
+            "timestamp": time.time(),
+        }
+        proof_key = (
+            f"artifacts/{tenant_id}/{doc_id}/{rev.id}/"
+            f"{fmt}-{sha[:16]}.proof.json"
+        )
+        proof_uri = objects.put(
+            proof_key, json.dumps(proof_manifest, ensure_ascii=False, indent=2).encode("utf-8")
+        )
+        proof = {**(proof or {}), "manifest_blob_key": proof_uri}
     else:
         _err(422, "VALIDATION", f"unsupported format {req.format}")
     return {

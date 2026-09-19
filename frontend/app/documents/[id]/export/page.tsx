@@ -31,6 +31,7 @@ export default function ExportPage() {
   const [result, setResult] = useState<{ file: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [mode, setMode] = useState("STUDENT_WITH_ENDNOTES");
 
   useEffect(() => {
     fetch(`${API}/api/documents/${id}`)
@@ -49,7 +50,7 @@ export default function ExportPage() {
     setResult(null);
     setBusy(format);
     try {
-      setResult(await exportDoc(id, format));
+      setResult(await exportDoc(id, format, mode));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -111,6 +112,19 @@ export default function ExportPage() {
         </p>
       )}
 
+      <div className="mb-3">
+        <label className="mb-1 block text-sm font-medium">출력 모드</label>
+        <select
+          className="rounded border px-2 py-1 text-sm"
+          value={mode}
+          onChange={(e) => setMode(e.target.value)}
+        >
+          <option value="STUDENT">STUDENT</option>
+          <option value="STUDENT_WITH_ENDNOTES">STUDENT_WITH_ENDNOTES</option>
+          <option value="ANSWER_SOLUTION">ANSWER_SOLUTION</option>
+          <option value="TEACHER">TEACHER</option>
+        </select>
+      </div>
       <div className="flex gap-3">
         {["hwpx", "pdf", "hwp"].map((fmt) => (
           <button

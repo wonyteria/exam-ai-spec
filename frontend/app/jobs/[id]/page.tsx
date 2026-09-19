@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { API, JobEvent } from "@/lib/api";
+import { activeTenant, API, cancelJob, JobEvent, retryJobV1 } from "@/lib/api";
 
 const STAGE_LABELS: Record<string, string> = {
   preprocessing: "이미지 정규화",
@@ -26,7 +26,24 @@ function JobView() {
   const docId = search.get("doc");
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [state, setState] = useState("UPLOADED");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [offline, setOffline] = useState(
+    typeof window !== "undefined" ? !window.navigator.onLine : false,
+  );
   const done = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
 
   useEffect(() => {
     const es = new EventSource(`${API}/api/jobs/${id}/events`);
@@ -68,6 +85,8 @@ function JobView() {
           {state}
         </span>
       </p>
+      {offline && <p className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">오프라인 상태입니다.</p>}
+      {error && <p className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
       <ol className="space-y-2">
         {stages.map((stage) => {
@@ -134,6 +153,48 @@ function JobView() {
           </Link>
         </div>
       )}
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={async () => {
+            if (busy) return;
+            setBusy("cancel");
+            setError(null);
+            try {
+              const j = await cancelJob(id);
+              setState(j.state ?? "CANCELLED");
+            } catch (e) {
+              setError(String(e));
+            } finally {
+              setBusy(null);
+            }
+          }}
+          disabled={busy !== null || finished}
+          className="rounded border px-3 py-1 text-xs disabled:opacity-40"
+        >
+          {busy === "cancel" ? "중단 요청 중…" : "중단"}
+        </button>
+        <button
+          onClick={async () => {
+            const tenant = activeTenant();
+            if (!tenant || busy) return;
+            setBusy("retry");
+            setError(null);
+            try {
+              await retryJobV1(tenant, id);
+              setState("UPLOADED");
+              setEvents([]);
+            } catch (e) {
+              setError(String(e));
+            } finally {
+              setBusy(null);
+            }
+          }}
+          disabled={busy !== null || !(state === "FAILED" || state === "CANCELLED")}
+          className="rounded border px-3 py-1 text-xs disabled:opacity-40"
+        >
+          {busy === "retry" ? "재시도 요청 중…" : "재시도"}
+        </button>
+      </div>
     </main>
   );
 }

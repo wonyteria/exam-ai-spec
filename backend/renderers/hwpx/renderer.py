@@ -125,6 +125,8 @@ def _question_paras(
         eq_xml = _equation_xml(eq)
         if eq_xml is not None:
             out.append(_para_run(eq_xml))
+    for fig_xml in _figure_objects_xml(q):
+        out.append(_para_run(fig_xml))
     for c in q.choices:
         text = " ".join(s.text for s in c.body)
         out.append(_para(f"{c.label} {text}"))
@@ -240,6 +242,62 @@ def _answer_space_xml(lines: int) -> str:
         '<hp:cellMargin left="510" right="510" top="141" bottom="141"/>'
         "</hp:tc></hp:tr></hp:tbl><hp:t/></hp:run></hp:p>"
     )
+
+
+def _figure_objects_xml(q: Question) -> list[str]:
+    out: list[str] = []
+    for fig in q.figures:
+        scene = getattr(fig, "scene", None)
+        if scene is None:
+            continue
+        points: dict[str, tuple[float, float]] = {}
+        for p in scene.primitives:
+            if p.kind == "point":
+                x = p.props.get("x")
+                y = p.props.get("y")
+                if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                    points[p.id] = (float(x), float(y))
+        if not points:
+            continue
+        xs = [xy[0] for xy in points.values()]
+        ys = [xy[1] for xy in points.values()]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        span_x = max(1.0, max_x - min_x)
+        span_y = max(1.0, max_y - min_y)
+
+        def sx(x: float) -> int:
+            return int(((x - min_x) / span_x) * 3600) + 200
+
+        def sy(y: float) -> int:
+            return int(((y - min_y) / span_y) * 2200) + 200
+
+        for p in scene.primitives:
+            if p.kind in {"segment", "line", "ray"} and len(p.refs) >= 2:
+                a = points.get(p.refs[0])
+                b = points.get(p.refs[1])
+                if a is None or b is None:
+                    continue
+                out.append(
+                    '<hp:line id="31" zOrder="0" numberingType="LINE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0">'
+                    '<hp:sz width="0" widthRelTo="ABSOLUTE" height="0" heightRelTo="ABSOLUTE" protect="0"/>'
+                    '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+                    '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+                    f'<hp:startPt x="{sx(a[0])}" y="{sy(a[1])}"/>'
+                    f'<hp:endPt x="{sx(b[0])}" y="{sy(b[1])}"/>'
+                    '<hp:lineShape endCap="FLAT" headStyle="NONE" tailStyle="NONE" outlineStyle="SOLID" color="#000000" width="40"/>'
+                    "</hp:line>"
+                )
+        if len(points) >= 2:
+            out.append(
+                '<hp:rect id="41" zOrder="0" numberingType="RECTANGLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0">'
+                '<hp:sz width="3800" widthRelTo="ABSOLUTE" height="2400" heightRelTo="ABSOLUTE" protect="0"/>'
+                '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+                '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+                '<hp:lineShape endCap="FLAT" headStyle="NONE" tailStyle="NONE" outlineStyle="SOLID" color="#444444" width="20"/>'
+                "</hp:rect>"
+            )
+    return out
 
 
 # -- paragraphs ---------------------------------------------------------------------

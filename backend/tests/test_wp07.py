@@ -17,10 +17,12 @@ from document.models import (
     Choice,
     Document,
     Equation,
+    Figure,
     Question,
     Solution,
     TextSpan,
 )
+from document.scene import FigureScene, ScenePrimitive
 from renderers.brand import get_brand
 from renderers.hwpx import render_hwpx
 from renderers.pdf import render_pdf
@@ -190,6 +192,24 @@ def test_hwpx_unparseable_equation_dropped_not_leaked():
     s = _section(render_hwpx(doc))
     assert "<hp:equation " not in s
     assert "matrix" not in s
+
+
+def test_hwpx_vector_figure_objects_from_scene():
+    doc = _doc(objective=1, descriptive=0)
+    doc.questions[0].figures = [
+        Figure(
+            scene=FigureScene(
+                primitives=[
+                    ScenePrimitive(id="A", kind="point", props={"x": 0, "y": 0}),
+                    ScenePrimitive(id="B", kind="point", props={"x": 4, "y": 3}),
+                    ScenePrimitive(id="AB", kind="segment", refs=["A", "B"]),
+                ]
+            )
+        )
+    ]
+    s = _section(render_hwpx(doc))
+    assert "<hp:line " in s
+    assert "<hp:rect " in s
 
 
 # --- brand separation ---------------------------------------------------------------------

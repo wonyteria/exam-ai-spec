@@ -14,6 +14,7 @@ import {
   ReviewItem,
   SourceManifestInfo,
 } from "@/lib/api";
+import Modal from "@/components/Modal";
 
 interface LogicFlagGroup {
   question_number: number;
@@ -58,6 +59,8 @@ export default function ReviewPage() {
   const [pages, setPages] = useState<DocPage[]>([]);
   const [manifest, setManifest] = useState<SourceManifestInfo | null>(null);
   const [orderMsg, setOrderMsg] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<Record<string, boolean>>({});
+  const [cropOpen, setCropOpen] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,10 +94,16 @@ export default function ReviewPage() {
   }, [id]);
 
   const resolve = async (atuId: string) => {
+    if (resolving[atuId]) return;
     const value = values[atuId];
     if (value === undefined) return;
-    await resolveItem(id, atuId, value);
-    setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
+    setResolving((r) => ({ ...r, [atuId]: true }));
+    try {
+      await resolveItem(id, atuId, value);
+      setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
+    } finally {
+      setResolving((r) => ({ ...r, [atuId]: false }));
+    }
   };
 
   const movePage = (index: number, dir: -1 | 1) => {
@@ -263,6 +272,12 @@ export default function ReviewPage() {
                   alt="원본 영역"
                   className="max-h-64 rounded border bg-gray-50 object-contain"
                 />
+                <button
+                  className="mt-2 rounded border px-2 py-1 text-xs"
+                  onClick={() => setCropOpen(crop)}
+                >
+                  원본 비교 확대
+                </button>
               </div>
             )}
 
@@ -293,14 +308,25 @@ export default function ReviewPage() {
               />
               <button
                 onClick={() => resolve(item.atu_id)}
+                disabled={Boolean(resolving[item.atu_id])}
                 className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
               >
-                확정
+                {resolving[item.atu_id] ? "확정 중…" : "확정"}
               </button>
             </div>
           </div>
         );
       })}
+      <Modal
+        title="원본 비교"
+        open={Boolean(cropOpen)}
+        onClose={() => setCropOpen(null)}
+      >
+        {cropOpen && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cropOpen} alt="원본 비교 확대" className="max-h-[70vh] w-full rounded border object-contain" />
+        )}
+      </Modal>
 
       {flags.map((g) => (
         <div

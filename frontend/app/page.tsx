@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AcademyBar from "@/components/AcademyBar";
 import {
   listDocuments,
@@ -16,6 +16,25 @@ export default function UploadPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
+  const [queue, setQueue] = useState<{ name: string; status: string }[]>([]);
+  const [offline, setOffline] = useState(
+    typeof window !== "undefined" ? !window.navigator.onLine : false,
+  );
+
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", on);
+      window.addEventListener("offline", off);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", on);
+        window.removeEventListener("offline", off);
+      }
+    };
+  }, []);
 
   const refreshLibrary = useCallback(async () => {
     try {
@@ -30,11 +49,19 @@ export default function UploadPage() {
       if (!files?.length || busy) return;
       setBusy(true);
       setError(null);
+      const entries = Array.from(files).map((f) => ({
+        name: f.name,
+        status: "대기",
+      }));
+      setQueue(entries);
       try {
+        setQueue((q) => q.map((x) => ({ ...x, status: "업로드 중" })));
         const { job_id, document_id } = await uploadFiles(Array.from(files));
+        setQueue((q) => q.map((x) => ({ ...x, status: "완료" })));
         router.push(`/jobs/${job_id}?doc=${document_id}`);
       } catch (e) {
         setError(String(e));
+        setQueue((q) => q.map((x) => ({ ...x, status: "실패" })));
         setBusy(false);
       }
     },
@@ -50,6 +77,11 @@ export default function UploadPage() {
           풀고 채점한 시험지를 올리면 원래 인쇄 시험지로 복원합니다
         </p>
       </div>
+      {offline && (
+        <p className="rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          오프라인 상태입니다. 네트워크 복구 후 다시 시도하세요.
+        </p>
+      )}
       <label
         onDragOver={(e) => {
           e.preventDefault();
@@ -78,6 +110,16 @@ export default function UploadPage() {
         />
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {queue.length > 0 && (
+        <ul className="w-full max-w-2xl rounded-lg border bg-white">
+          {queue.map((q, i) => (
+            <li key={`${q.name}-${i}`} className="flex justify-between border-b px-3 py-2 text-sm last:border-b-0">
+              <span className="truncate">{q.name}</span>
+              <span className="text-gray-500">{q.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {docs.length > 0 && (
         <div className="w-full max-w-2xl">

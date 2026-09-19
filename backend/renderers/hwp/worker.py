@@ -64,15 +64,27 @@ class WindowsHWPWorker:
         try:
             hwp = win32com.client.Dispatch(prog_id)
             hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule")
-            if not hwp.Open(str(hwpx_path)):
+            open_hwpx = bool(hwp.Open(str(hwpx_path)))
+            if not open_hwpx:
                 raise RuntimeError("Open(HWPX) returned False")
-            hwp.SaveAs(str(out_hwp), "HWP")
+            save_hwp = hwp.SaveAs(str(out_hwp), "HWP")
             hwp.Run("FileClose")
-            if not hwp.Open(str(out_hwp)):
+            reopen_hwp = bool(hwp.Open(str(out_hwp)))
+            if not reopen_hwp:
                 raise RuntimeError("ReOpen(HWP) returned False")
-            hwp.SaveAs(str(out_pdf), "PDF")
+            save_pdf = hwp.SaveAs(str(out_pdf), "PDF")
             hwp.Run("FileClose")
-            queue.put({"ok": True})
+            queue.put(
+                {
+                    "ok": True,
+                    "steps": {
+                        "open_hwpx": open_hwpx,
+                        "saveas_hwp": bool(save_hwp) if save_hwp is not None else True,
+                        "reopen_hwp": reopen_hwp,
+                        "saveas_pdf": bool(save_pdf) if save_pdf is not None else True,
+                    },
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             queue.put({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
         finally:
@@ -134,6 +146,7 @@ class WindowsHWPWorker:
                     "checks": checks,
                     "worker_identity": f"{socket.gethostname()}:{os.getpid()}",
                     "request_revision": request_revision,
+                    "step_returns": (result.get("steps") or {}),
                     "hwpx_sha256": self._sha256(hwpx_path),
                     "hwp_sha256": self._sha256(out_hwp),
                     "pdf_sha256": self._sha256(out_pdf),
