@@ -58,6 +58,8 @@ Codex 구독은 이 운영 흐름과 분리된 개발·QA 도구다. OpenAI API 
 
 작업용 표: [요구·감사·테스트 추적표](./TRACEABILITY.csv), [개발 backlog](./BACKLOG.csv), [인수 결과 기록 양식](./ACCEPTANCE_RESULTS_TEMPLATE.csv).
 
+경쟁 서비스의 공개 도움말·업데이트에서 추출한 반복 결함과 launch checklist: [매쓰테일러 심층 검토](./MATHTAILER_HELP_UPDATE_DEEP_DIVE.md).
+
 문서 정합성은 [독립 검토 결과](./REVIEW_VERDICT.md)에서 PASS 판정을 받았다. 이 판정은 개발 인계 문서에 대한 것이며 제품 구현·테스트·출시 완료를 뜻하지 않는다.
 
 독립 검토 PASS는01~07의기본계약범위다. 이후추가한08은기존F0~F4/REQ-27을구체화한수집운영지침이며,별도대규모데이터확보나새모델검증완료를뜻하지않는다. 현재공개후보11곳을조사했고외부보조답안한쌍을검수했다. 한국수학핵심전장시험지묶음은이번수집에서아직확보되지않았다.

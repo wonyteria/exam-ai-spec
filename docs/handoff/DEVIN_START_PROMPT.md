@@ -10,6 +10,8 @@
 
 **경쟁·사업 목표:** 설치 프로그램과 사용자 API 키 등록이 필요한 경쟁 흐름보다 단순해야 합니다. 첫 파일 전에는 학교/학년/시험 종류와 파일 외의 기술 설정을 요구하지 마세요. `09_PRODUCT_POSITIONING_AND_UNIT_ECONOMICS.md`의 디자인 방향·성능 SLO·가격/COGS/margin gate를 구현 계약으로 사용하세요. 가격은 실측 전 provisional이며, 비용을 맞추려고 검증을 줄이거나 품질 실패 재처리를 고객에게 청구하지 마세요.
 
+**안정성 우선:** 제품 의사결정 순서는 기능적 안정성, 편리함, 성능, 가격, 기능 수입니다. `MATHTAILER_HELP_UPDATE_DEEP_DIVE.md`에서 확인한 수식·도형·crop·미주·locale·provider 회귀를 corpus와 출시 gate로 구현하세요. 교사에게 수동 환경 수정이나 외부 API 가입을 요구해 실패를 우회하지 마세요.
+
 **제품 핵심:** 사진/PDF의 인쇄 문항 번호·본문·보기·배점·도형을 원문대로 보존하고 학생 손글씨·채점·낙서는 제외해야 합니다. 도형은 관계와 표식을 유지해 재작도하고, 논술형 답안 공간을 보존하세요. 수학 숫자는 실제 수식 객체의 it체, 단위는 roman체로 표시하며, 수식 크기는 11pt입니다. 기본 객관식 레이아웃은 2열×각 열 2문항이고, 같은 행의 좌우 블록 높이를 맞춰 다음 행의 시작선을 일치시킵니다. 모든 채점 단위에 정답과 해당 학년 수준의 풀이를 실제 미주로 넣고, 실제 한글에서 다시 열어 검증해야 합니다.
 
 읽는 순서는 START_HERE → 01_PRODUCT_REQUIREMENTS → 02_ARCHITECTURE_CONTRACTS → 03_PAGE_UX_SPEC → 04_ACCEPTANCE_TEST_PLAN → 05_DELIVERY_PLAN → 06/07입니다. REQUIREMENT_INDEX와 TRACEABILITY/BACKLOG/ACCEPTANCE_RESULTS_TEMPLATE의 ID를 PR·테스트·완료 보고에 사용하세요.
