@@ -89,3 +89,7 @@ artifact output과 proof는 content revision·renderer/worker/app/font version�
 Devin은 각 구성의 동일한 지원 범위·원본·reasoning 조건을 기록하고, 텍스트/도형/정답/해설/예외 검출/비용/지연을 비교한다. critical 오류를 최종 통과시킨 구성은 비용이 저렴해도 탈락한다. 합격한 구성 중 평균과 꼬리 비용/지연·검토 부담이 낮은 구성을 채택한다.
 
 이번 계획에서는 모델 API를 실제로 호출하거나 개인 구독의 현재 잔여량을 평가하지 않았다. 제품 계약과 비용 관측을 먼저 구현하고, 승인된 평가 예산/자료로 측정한 뒤 routing default를 고정한다.
+
+## 9. 가격과 margin gate
+
+가격·디자인·성능의 통합 기준은 [09 제품 포지셔닝·단위경제성](./09_PRODUCT_POSITIONING_AND_UNIT_ECONOMICS.md)을 따른다. 운영자는 rolling 30-day gross margin, AI API 비용/매출, hard-page 승격률, 무료 재처리율을 함께 본다. 100% allowance 사용 시에도 요금제 총이익률 60%를 넘는다는 실측 없이 할인이나 무제한을 출시하지 않는다.

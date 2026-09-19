@@ -54,6 +54,7 @@ Codex 구독은 이 운영 흐름과 분리된 개발·QA 도구다. OpenAI API 
 | 6 | [06 AI·비용·운영](./06_AI_COST_AND_OPERATIONS.md) | 개발 Codex/운영 API 분리, 모델 평가/예산/Windows |
 | 7 | [07 결정·출시 gate](./07_DECISIONS_AND_RELEASE_GATES.md) | 확정 사항/제안/운영 결정과 대안 |
 | 8 | [08 실제 자료 수집·반복 테스트](./08_CORPUS_AND_CONTINUOUS_TESTING.md) | 자료 검수·개발/잠금 평가 분리·실패 수정 루프 |
+| 9 | [09 포지셔닝·디자인·성능·단위경제성](./09_PRODUCT_POSITIONING_AND_UNIT_ECONOMICS.md) | 무설치·무API키 UX, SLO, 가격·원가·margin gate |
 
 작업용 표: [요구·감사·테스트 추적표](./TRACEABILITY.csv), [개발 backlog](./BACKLOG.csv), [인수 결과 기록 양식](./ACCEPTANCE_RESULTS_TEMPLATE.csv).
 
