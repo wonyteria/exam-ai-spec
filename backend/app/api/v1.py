@@ -18,6 +18,7 @@ from canonical.models import (
     JobV2State,
     RevisionMode,
 )
+from canonical.policy import restore_policy
 from canonical.service import MutationService
 from canonical.store import (
     CanonicalStore,
@@ -29,6 +30,7 @@ from canonical.store import (
     ValidationError,
 )
 from jobs.store import Store
+from renderers.hwp import HWPWorkerUnavailable, WindowsHWPWorker
 from renderers.hwpx import render_hwpx
 from renderers.pdf import render_pdf
 from storage.local import LocalObjectStore
@@ -590,22 +592,59 @@ def v1_create_artifact(
 
     doc = Document.model_validate(rev.content_json)
     fmt = req.format.lower()
+    proof = None
     if fmt == "hwpx":
-        blob = render_hwpx(doc)
-    elif fmt == "pdf":
-        blob = render_pdf(doc)
-    elif fmt == "hwp":
-        _err(422, "VALIDATION", "hwp artifacts require the Windows worker path")
+        blob = render_hwpx(doc, output_mode=req.output_mode)
+        sha = hashlib.sha256(blob).hexdigest()
+        key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/{fmt}-{sha[:16]}.{fmt}"
+        uri = objects.put(key, blob)
+        art = _service(cstore).register_draft_artifact(
+            tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
+        )
+    elif fmt in {"hwp", "pdf"}:
+        hwpx_blob = render_hwpx(doc, output_mode=req.output_mode)
+        hwpx_sha = hashlib.sha256(hwpx_blob).hexdigest()
+        hwpx_key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/hwpx-{hwpx_sha[:16]}.hwpx"
+        hwpx_uri = objects.put(hwpx_key, hwpx_blob)
+        _service(cstore).register_draft_artifact(
+            tenant_id, doc_id, rev.id, "hwpx", hwpx_uri, hwpx_sha, len(hwpx_blob), req.output_mode
+        )
+        base = objects.open(hwpx_uri)
+        hwp_path = base.with_suffix(".hwp")
+        pdf_path = base.with_suffix(".pdf")
+        try:
+            proof = WindowsHWPWorker().convert_with_proof(
+                base, hwp_path, pdf_path, request_revision=rev.id
+            )
+        except HWPWorkerUnavailable as exc:
+            _err(503, "HWP_WORKER_UNAVAILABLE", str(exc), retryable=True)
+        target = hwp_path if fmt == "hwp" else pdf_path
+        blob = target.read_bytes()
+        sha = hashlib.sha256(blob).hexdigest()
+        key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/{fmt}-{sha[:16]}.{fmt}"
+        uri = objects.put(key, blob)
+        art = _service(cstore).register_draft_artifact(
+            tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
+        )
+        required = set(restore_policy(req.output_mode).required_artifact_checks_by_format.get(fmt, []))
+        checks = {k: "FAILED" for k in required}
+        for k, v in (proof or {}).get("checks", {}).items():
+            checks[k] = v
+        for k in required:
+            if k not in checks:
+                checks[k] = "FAILED"
+        _service(cstore).record_proof(
+            art.id, checks=checks, worker_identity=(proof or {}).get("worker_identity", "")
+        )
     else:
         _err(422, "VALIDATION", f"unsupported format {req.format}")
-
-    sha = hashlib.sha256(blob).hexdigest()
-    key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/{fmt}-{sha[:16]}.{fmt}"
-    uri = objects.put(key, blob)
-    art = _service(cstore).register_draft_artifact(
-        tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
-    )
-    return {"data": {"artifact": art.model_dump()}, "request_id": _request_id()}
+    return {
+        "data": {
+            "artifact": art.model_dump(),
+            "proof": proof,
+        },
+        "request_id": _request_id(),
+    }
 
 
 class ProofRequest(BaseModel):
