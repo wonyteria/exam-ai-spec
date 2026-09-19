@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { activeTenant, API, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import Modal from "@/components/Modal";
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +15,10 @@ export default function EditorPage() {
   const [busyUndo, setBusyUndo] = useState(false);
   const [composing, setComposing] = useState(false);
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [pendingInstruction, setPendingInstruction] = useState("");
+  const [submitBusy, setSubmitBusy] = useState(false);
 
   useEffect(() => {
     const tenant = activeTenant();
@@ -23,30 +28,40 @@ export default function EditorPage() {
       .catch(() => setUndoTarget(null));
   }, [id, listKey]);
 
-  const submit = async () => {
-    if (!instruction.trim() || busy) return;
+  const submit = async (directInstruction?: string) => {
+    const ins = (directInstruction ?? instruction).trim();
+    if (!ins || busy || submitBusy) return;
+    setSubmitBusy(true);
     setBusy(true);
-    const res = await sendEdit(id, instruction);
-    const lines = [`> ${instruction}`];
-    if (res.ok) {
+    const lines = [`> ${ins}`];
+    try {
+      const res = await sendEdit(id, ins);
+      if (res.ok) {
+        lines.push(
+          ...(res.applied ?? []).map(
+            (a) => `적용: ${a.question}번 ${a.field} → ${JSON.stringify(a.value)}`,
+          ),
+        );
+        setPreviewKey((k) => k + 1);
+        setListKey((k) => k + 1);
+      } else {
+        lines.push(`미적용: ${res.detail ?? "적용된 연산 없음"}`);
+      }
       lines.push(
-        ...(res.applied ?? []).map(
-          (a) => `적용: ${a.question}번 ${a.field} → ${JSON.stringify(a.value)}`,
+        ...(res.skipped ?? []).map(
+          (s) => `건너뜀: ${s.question}번 ${s.field} — ${s.reason}`,
         ),
       );
-      setPreviewKey((k) => k + 1);
-      setListKey((k) => k + 1);
-    } else {
-      lines.push(`미적용: ${res.detail ?? "적용된 연산 없음"}`);
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("[409")) setConflictOpen(true);
+      lines.push(`오류: ${msg}`);
+    } finally {
+      setBusy(false);
+      setSubmitBusy(false);
     }
-    lines.push(
-      ...(res.skipped ?? []).map(
-        (s) => `건너뜀: ${s.question}번 ${s.field} — ${s.reason}`,
-      ),
-    );
     setLog((l) => [...lines, ...l]);
     setInstruction("");
-    setBusy(false);
   };
 
   return (
@@ -91,7 +106,11 @@ export default function EditorPage() {
               onKeyDown={(e) => e.key === "Enter" && !composing && submit()}
             />
             <button
-              onClick={submit}
+              onClick={() => {
+                if (!instruction.trim() || busy || submitBusy) return;
+                setPendingInstruction(instruction.trim());
+                setPlanOpen(true);
+              }}
               disabled={busy}
               className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50"
             >
@@ -138,6 +157,62 @@ export default function EditorPage() {
           </div>
         </aside>
       </div>
+      <Modal
+        title="AI 변경 계획 승인"
+        open={planOpen}
+        onClose={() => {
+          if (submitBusy) return;
+          setPlanOpen(false);
+        }}
+      >
+        <p className="mb-3 text-sm">아래 변경 지시를 적용하시겠습니까?</p>
+        <pre className="mb-3 whitespace-pre-wrap rounded border bg-gray-50 p-2 text-xs">{pendingInstruction}</pre>
+        <div className="flex gap-2">
+          <button
+            className="rounded border px-3 py-1 text-sm"
+            onClick={() => {
+              if (submitBusy) return;
+              setPlanOpen(false);
+              setLog((l) => [`> ${pendingInstruction}`, "거부: 사용자 취소", ...l]);
+            }}
+            disabled={submitBusy}
+          >
+            거부
+          </button>
+          <button
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+            onClick={async () => {
+              if (submitBusy) return;
+              setPlanOpen(false);
+              await submit(pendingInstruction);
+            }}
+            disabled={submitBusy}
+          >
+            승인 후 적용
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        title="충돌 감지"
+        open={conflictOpen}
+        onClose={() => setConflictOpen(false)}
+      >
+        <p className="text-sm">
+          다른 탭/사용자 수정으로 버전 충돌(409)이 발생했습니다. 최신 상태를 확인하고 다시 시도하세요.
+        </p>
+        <div className="mt-3">
+          <button
+            className="rounded border px-3 py-1 text-sm"
+            onClick={() => {
+              setConflictOpen(false);
+              setPreviewKey((k) => k + 1);
+              setListKey((k) => k + 1);
+            }}
+          >
+            새로고침
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }

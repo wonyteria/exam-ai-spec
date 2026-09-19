@@ -1,4 +1,4 @@
-export const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // --- dev auth context ---------------------------------------------------
 // Session cookie is the primary path (credentials: "include"). The dev

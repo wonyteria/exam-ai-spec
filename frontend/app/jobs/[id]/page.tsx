@@ -28,18 +28,21 @@ function JobView() {
   const [state, setState] = useState("UPLOADED");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [offline, setOffline] = useState(
-    typeof window !== "undefined" ? !window.navigator.onLine : false,
-  );
+  const [streamGeneration, setStreamGeneration] = useState(0);
+  const [offline, setOffline] = useState(false);
   const done = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const on = () => setOffline(false);
     const off = () => setOffline(true);
+    const initial = window.requestAnimationFrame(() =>
+      setOffline(!window.navigator.onLine),
+    );
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     return () => {
+      window.cancelAnimationFrame(initial);
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
@@ -58,7 +61,7 @@ function JobView() {
       setEvents((prev) => [...prev, data as JobEvent]);
     };
     return () => es.close();
-  }, [id]);
+  }, [id, streamGeneration]);
 
   const stages = [...new Set(events.filter((e) => e.stage !== "pipeline").map((e) => e.stage))];
   const finished = ["COMPLETED", "NEEDS_REVIEW", "FAILED"].includes(state);
@@ -183,6 +186,8 @@ function JobView() {
               await retryJobV1(tenant, id);
               setState("UPLOADED");
               setEvents([]);
+              done.current = false;
+              setStreamGeneration((generation) => generation + 1);
             } catch (e) {
               setError(String(e));
             } finally {

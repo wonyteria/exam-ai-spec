@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AcademyBar from "@/components/AcademyBar";
+import Modal from "@/components/Modal";
 import {
   listDocuments,
   uploadFiles,
@@ -14,22 +15,28 @@ export default function UploadPage() {
   const router = useRouter();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ code: string; message: string } | null>(
+    null,
+  );
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
   const [queue, setQueue] = useState<{ name: string; status: string }[]>([]);
-  const [offline, setOffline] = useState(
-    typeof window !== "undefined" ? !window.navigator.onLine : false,
-  );
+  const [offline, setOffline] = useState(false);
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const on = () => setOffline(false);
     const off = () => setOffline(true);
+    let initial: number | null = null;
     if (typeof window !== "undefined") {
+      initial = window.requestAnimationFrame(() =>
+        setOffline(!window.navigator.onLine),
+      );
       window.addEventListener("online", on);
       window.addEventListener("offline", off);
     }
     return () => {
       if (typeof window !== "undefined") {
+        if (initial !== null) window.cancelAnimationFrame(initial);
         window.removeEventListener("online", on);
         window.removeEventListener("offline", off);
       }
@@ -58,9 +65,17 @@ export default function UploadPage() {
         setQueue((q) => q.map((x) => ({ ...x, status: "업로드 중" })));
         const { job_id, document_id } = await uploadFiles(Array.from(files));
         setQueue((q) => q.map((x) => ({ ...x, status: "완료" })));
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
         router.push(`/jobs/${job_id}?doc=${document_id}`);
       } catch (e) {
-        setError(String(e));
+        const raw = String(e);
+        const m = raw.match(/\[(\d+)(?:\s+([A-Z0-9_]+))?\]\s*(.*)$/);
+        setError({
+          code: m?.[2] || (m?.[1] ? `HTTP_${m[1]}` : "UPLOAD_ERROR"),
+          message: m?.[3] || raw,
+        });
         setQueue((q) => q.map((x) => ({ ...x, status: "실패" })));
         setBusy(false);
       }
@@ -109,17 +124,62 @@ export default function UploadPage() {
           onChange={(e) => onFiles(e.target.files)}
         />
       </label>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-600" role="alert">
+          <span className="font-semibold">{error.code}</span>
+          {error.message ? `: ${error.message}` : ""}
+        </p>
+      )}
       {queue.length > 0 && (
         <ul className="w-full max-w-2xl rounded-lg border bg-white">
           {queue.map((q, i) => (
             <li key={`${q.name}-${i}`} className="flex justify-between border-b px-3 py-2 text-sm last:border-b-0">
               <span className="truncate">{q.name}</span>
-              <span className="text-gray-500">{q.status}</span>
+              <span className="flex items-center gap-2 text-gray-500">
+                {q.status}
+                {!busy && (
+                  <button
+                    className="rounded border px-2 py-0.5 text-xs"
+                    onClick={() => setDeleteIndex(i)}
+                  >
+                    제거
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
       )}
+      <Modal
+        title="삭제 확인"
+        open={deleteIndex !== null}
+        onClose={() => {
+          if (busy) return;
+          setDeleteIndex(null);
+        }}
+      >
+        <p className="mb-3 text-sm">큐에서 이 파일을 제거하시겠습니까?</p>
+        <div className="flex gap-2">
+          <button
+            className="rounded border px-3 py-1 text-sm"
+            onClick={() => setDeleteIndex(null)}
+            disabled={busy}
+          >
+            취소
+          </button>
+          <button
+            className="rounded bg-red-600 px-3 py-1 text-sm text-white"
+            onClick={() => {
+              if (deleteIndex === null || busy) return;
+              setQueue((q) => q.filter((_, idx) => idx !== deleteIndex));
+              setDeleteIndex(null);
+            }}
+            disabled={busy}
+          >
+            삭제
+          </button>
+        </div>
+      </Modal>
 
       {docs.length > 0 && (
         <div className="w-full max-w-2xl">
