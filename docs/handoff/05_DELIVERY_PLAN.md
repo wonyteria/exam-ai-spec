@@ -136,6 +136,7 @@ WP10의 최소 로깅·한도·권한은 WP01부터 적용한다. WP10까지 보
 - 2열×2문항 및 row pairing, 긴 문항 흐름, 논술형 answer space, source label을 구현한다.
 - 브랜드/템플릿 version과 콘텐츠 semantic hash를 분리한다. 실제 미주에 모든 채점 단위의 답+풀이를 넣는다.
 - 학생용/미주 포함/정답·해설/교사용 출력 모드를 구분하고, Unicode·수식·도형·페이지 넘김을 확인한다.
+- 기존 HWP/HWPX를 위한 structure scanner와 allowlisted rebranding plan을 구현한다. header/master/body-top의 선택된 title block만 교체하고 watermark를 병합하며 page-number mechanism별로 제거한다. 원본은 불변이다.
 
 **현재 파일:** `renderers/{web,hwpx,pdf}`, `core/examdna/rendering.py`, `document/models.py:193–194`, `features/11_brand_template.md`.
 
@@ -148,6 +149,7 @@ WP10의 최소 로깅·한도·권한은 WP01부터 적용한다. WP10까지 보
 - 중앙 Windows worker의 상태/단일 COM 작업/격리 디렉터리/timeout/recycle을 구현한다.
 - 요청 revision의 HWPX만 변환하고 Open/SaveAs/파일/재열기를 검증한다. proof는 실제 생성 파일을 대상으로 한다.
 - 구조 비교와 독립 렌더 검사로 수식/도형/미주/내용/배치 불일치를 검출한다. OCR이 수식을 못 읽으면 확인 불가로 남기고 구조 검사만으로 통과하지 않는다.
+- rebranding artifact는 control manifest와 변경 plan을 기준으로 허용 영역 밖 구조/렌더 diff 0건, page count 동일, title/watermark/page-number 결과를 실제 HWP/PDF에서 검사한다. timeout은 해당 작업의 Hwp descendant까지 정리한다.
 - 최종 다운로드 권한은 artifact별 proof와 tenant/삭제/권한을 확인한다.
 
 **현재 파일:** `renderers/hwp/worker.py`, `qa/hwp_proof.py`, `core/examdna/export_verification.py`, `zero_typo_gate/gate.py`, `documents.py:168–198`.

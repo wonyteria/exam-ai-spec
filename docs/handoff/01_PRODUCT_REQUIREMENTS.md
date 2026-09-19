@@ -177,6 +177,8 @@ Owner는 학원의 구성원·브랜드·한도·보관 정책을 관리한다. 
 - 학원별 이름/로고/연락처/색/기본 font/용지·여백·문항 간격·미주 정책을 관리한다. 모든 파일은 해당 학원의 asset이어야 한다.
 - 콘텐츠 hash와 style/template hash를 분리한다. 브랜드 변경 전후 문항·정답·풀이의 semantic hash는 같아야 하며, 렌더/layout/proof는 새로 만든다.
 - 템플릿 버전은 불변이며, 문서에 적용하기 전에 preview와 overflow 결과를 확인한다.
+- 기존 HWP/HWPX 리브랜딩은 원본을 불변 보관한 뒤 구조 census→사용자 확인→복제본 mutation→실제 한컴 proof 순서로 처리한다. 상단 제목이 바탕쪽·머리말·표·그림에 섞인 경우 선택한 control만 교체하고 본문/구역/조판부호를 전역 삭제하지 않는다.
+- 중앙 워터마크는 기존 바탕쪽을 대체하지 않고 각 section에 별도 behind-text object로 병합한다. 쪽번호는 전용 control, 머리말/꼬리말, 바탕쪽, print footer를 각각 검사하고 다른 footer 내용은 보존한다. 상세 계약은 `HWP_REBRANDING_SPEC.md`다.
 - 현재 근거: `document/models.py:193–194`의 ID 필드만 존재, `features/11_brand_template.md`.
 
 ### REQ-17 — 불변 산출물·포맷별 proof
