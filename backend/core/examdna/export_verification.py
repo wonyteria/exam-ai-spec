@@ -17,7 +17,7 @@ def run(ctx: PipelineContext) -> None:
         ctx.artifact_proof = {"status": "NOT_RUN", "detail": "no_artifact"}
         ctx.emit("export_verification", "HWPX 산출물 없음 — 역검증 생략", "warn")
         return
-    ctx.hwp_mismatch = run_hwp_proof(hwpx, ctx.workdir)
+    ctx.hwp_mismatch = run_hwp_proof(hwpx, ctx.workdir, ctx.document)
     if ctx.hwp_mismatch is None:
         ctx.artifact_proof = bind_artifact_proof(
             hwpx, "NOT_RUN", detail="hwp_worker_unavailable"
