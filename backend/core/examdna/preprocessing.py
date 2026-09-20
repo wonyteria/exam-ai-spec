@@ -118,11 +118,14 @@ def _rasterize_pdf_page(ctx: PipelineContext, page: Page, path: Path) -> None:
         ctx.emit("preprocessing", f"{path.name}: PDF 렌더 실패 — {exc}", "warn")
         return
 
-    if page.inventory and page.inventory.image_only:
-        ctx.emit(
-            "preprocessing",
-            f"{path.name} p{idx}: 텍스트 계층 없음 — 이미지 경로로 처리",
-        )
+    if page.inventory:
+        cls = page.inventory.pdf_class
+        detail = {
+            "SCANNED": "텍스트 계층 없음 — 이미지 경로로 처리",
+            "HYBRID": "텍스트 계층 불충분/대형 이미지 — 인식+네이티브 병행",
+            "DIGITAL": "네이티브 텍스트 계층 — 독립 증거로 기록",
+        }.get(cls, "분류 불명")
+        ctx.emit("preprocessing", f"{path.name} p{idx}: {cls} — {detail}")
 
     page.width, page.height = base.size
     page.transform = {
@@ -146,14 +149,93 @@ def _rasterize_pdf_page(ctx: PipelineContext, page: Page, path: Path) -> None:
     page.original.variants.update(_make_variants(base, ctx.workdir, stem, page))
 
 
+NATIVE_FRAGMENT_CAP = 64  # bounded evidence, not a full text dump
+
+
+def classify_pdf_page(
+    text_chars: int,
+    image_bounds: list[list[float]],
+    width_pt: float,
+    height_pt: float,
+) -> str:
+    """DIGITAL | SCANNED | HYBRID from the native census.
+
+    SCANNED — no text layer at all. HYBRID — a text layer too thin to
+    trust, or raster images covering most of the page under the text
+    (a scanned page with an OCR'd layer). DIGITAL — a real text layer
+    with no dominant image.
+    """
+    if text_chars == 0:
+        return "SCANNED"
+    page_area = max(width_pt * height_pt, 1.0)
+    image_area = sum(
+        max(b[2] - b[0], 0) * max(b[3] - b[1], 0) for b in image_bounds
+    )
+    if text_chars < TEXT_LAYER_SPARSE_CHARS or image_area >= 0.5 * page_area:
+        return "HYBRID"
+    return "DIGITAL"
+
+
+def _native_fragments(tp, cap: int = NATIVE_FRAGMENT_CAP) -> tuple[list[dict], bool]:
+    """Bounded text-layer evidence: rect-bounded text fragments in source
+    pt coordinates. Truncation is flagged, never silent."""
+    fragments: list[dict] = []
+    try:
+        total = tp.count_rects()
+    except Exception:
+        return fragments, False
+    for i in range(min(total, cap)):
+        try:
+            rect = tp.get_rect(i)  # left, bottom, right, top (pt)
+            text = tp.get_text_bounded(*rect) or ""
+        except Exception:
+            continue
+        text = text.strip()
+        if text:
+            fragments.append(
+                {"text": text, "bbox_pt": [round(v, 1) for v in rect]}
+            )
+    return fragments, total > cap
+
+
+def _page_fonts(objects) -> list[str]:
+    """Base font names of text objects via the raw pdfium API
+    (caller-allocated wide-string buffer, UTF-16LE)."""
+    try:
+        import ctypes
+
+        import pypdfium2.raw as pdfium_raw
+    except Exception:
+        return []
+    fonts: set[str] = set()
+    for obj in objects:
+        if getattr(obj, "type", None) != 1:
+            continue
+        try:
+            font = pdfium_raw.FPDFTextObj_GetFont(obj.raw)
+            n = pdfium_raw.FPDFFont_GetBaseFontName(font, None, 0)
+            if not n:
+                continue
+            buf = ctypes.create_string_buffer(n)
+            pdfium_raw.FPDFFont_GetBaseFontName(font, buf, n)
+            name = buf.raw.decode("utf-8", "replace").rstrip("\x00")
+            if name:
+                fonts.add(name)
+        except Exception:
+            continue
+    return sorted(fonts)
+
+
 def _page_inventory(pdf_page, idx: int) -> PdfPageInventory:
     """Native-object census of one PDF page (text/image/path/form counts,
-    image bounds, rotation, boxes). Extraction failures on individual
-    objects degrade to counts of what could be read, not a crash."""
+    image bounds, rotation, boxes, three-way class, bounded native text
+    fragments and font names). Extraction failures on individual objects
+    degrade to counts of what could be read, not a crash."""
     w, h = pdf_page.get_size()
     tp = pdf_page.get_textpage()
     try:
         text_chars = tp.count_chars()
+        fragments, truncated = _native_fragments(tp)
     finally:
         tp.close()
 
@@ -190,6 +272,10 @@ def _page_inventory(pdf_page, idx: int) -> PdfPageInventory:
         image_bounds_pt=image_bounds,
         image_only=text_chars == 0,
         text_layer_sparse=0 < text_chars < TEXT_LAYER_SPARSE_CHARS,
+        pdf_class=classify_pdf_page(int(text_chars), image_bounds, w, h),
+        native_fragments=fragments,
+        native_fragments_truncated=truncated,
+        fonts=_page_fonts(objects),
     )
 
 

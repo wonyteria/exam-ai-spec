@@ -48,6 +48,7 @@ def run(ctx: PipelineContext) -> None:
         _extend_regions(page_questions, page)
         for q in page_questions:
             _refresh_anchor(page, q)
+        _classify_regions(ctx, page, page_questions)
         questions.extend(page_questions)
     ctx.document.questions = questions
     ctx.emit(
@@ -102,6 +103,34 @@ def _classify_page_role(ctx, page) -> None:
 
 
 GAP = 6.0
+
+
+def _classify_regions(ctx, page, questions) -> None:
+    """RegionDNA (RESTORE-14): type page furniture and per-question
+    regions on the raster. Failures leave `regions` empty — absence of
+    typing is never treated as absence of content."""
+    uri = page.original.variants.get("grayscale")
+    if not uri:
+        return
+    path = ctx.resolve_uri(uri)
+    if not path.exists():
+        return
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from document.regions import classify_regions
+
+        gray = np.asarray(Image.open(path).convert("L"))
+        page.regions = [
+            r.model_dump() for r in classify_regions(gray, questions, page.index)
+        ]
+    except Exception as exc:  # noqa: BLE001
+        ctx.emit(
+            "segmentation",
+            f"페이지 {page.index + 1}: 영역 분류 실패 — {exc}",
+            "warn",
+        )
 
 
 def _region_candidates(provider, image: Path, page_index: int, ctx) -> list[dict]:

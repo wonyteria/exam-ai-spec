@@ -180,14 +180,38 @@ def _to_candidate(
     crop_offset: tuple[float, float],
     region: BBox | None,
 ) -> Candidate:
+    import time
+
     bbox = _poly_bbox(item.get("poly"))
+    bbox_asset = (
+        BBox(
+            x=bbox[0],
+            y=bbox[1],
+            w=bbox[2] - bbox[0],
+            h=bbox[3] - bbox[1],
+        )
+        if bbox is not None
+        else None
+    )
+    bbox_original = None
     if bbox is not None:
         dx, dy = crop_offset
         bbox = [bbox[0] + dx, bbox[1] + dy, bbox[2] + dx, bbox[3] + dy]
+        bbox_original = BBox(
+            x=bbox[0],
+            y=bbox[1],
+            w=bbox[2] - bbox[0],
+            h=bbox[3] - bbox[1],
+        )
     return Candidate(
         provider=provider,
         value=item["text"],
         confidence=item["score"],
+        model_version=model,
+        bbox_asset=bbox_asset,
+        bbox_original=bbox_original,
+        raw_output_sha256=input_sha256,
+        timestamp=time.time(),
         meta={
             "model": model,
             "input_sha256": input_sha256,

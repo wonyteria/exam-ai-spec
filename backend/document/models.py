@@ -54,10 +54,20 @@ class SourceRef(BaseModel):
 
 
 class Candidate(BaseModel):
+    """RecognitionCandidate (ReadDNA): a provider's claim, never a final
+    value. First-class provenance fields — bbox_original (source-pixel
+    space), bbox_asset (space of the derived asset actually fed to the
+    engine), model_version, raw output hash, and timestamp — are the
+    contract; `meta` carries provider extras."""
     provider: str
     value: Any
     confidence: float = 0.0
     meta: dict[str, Any] = Field(default_factory=dict)
+    model_version: Optional[str] = None
+    bbox_original: Optional[BBox] = None
+    bbox_asset: Optional[BBox] = None
+    raw_output_sha256: Optional[str] = None
+    timestamp: Optional[float] = None
 
 
 class ATU(BaseModel):
@@ -196,6 +206,13 @@ class PdfPageInventory(BaseModel):
     image_bounds_pt: list[list[float]] = Field(default_factory=list)
     image_only: bool = False          # no text layer — scan path
     text_layer_sparse: bool = False   # some text but too thin to trust
+    # RESTORE-14: three-way source classification and bounded native
+    # evidence — DIGITAL pages keep their text layer as an independent
+    # evidence stream, SCANNED pages go through recognition only.
+    pdf_class: str = "UNKNOWN"        # DIGITAL | SCANNED | HYBRID | UNKNOWN
+    native_fragments: list[dict[str, Any]] = Field(default_factory=list)
+    native_fragments_truncated: bool = False
+    fonts: list[str] = Field(default_factory=list)
 
 
 class TransformStep(BaseModel):
@@ -248,6 +265,10 @@ class Page(BaseModel):
     inventory: Optional[PdfPageInventory] = None
     transform_chain: list[TransformStep] = Field(default_factory=list)
     processing_error: Optional[str] = None
+    # RegionDNA (RESTORE-14): typed regions with evidence — header/footer
+    # bands, question bodies, tables, answer space. Typed for routing;
+    # never silently dropped.
+    regions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ExamMetadata(BaseModel):
