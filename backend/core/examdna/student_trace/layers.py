@@ -1,0 +1,379 @@
+"""Six-class per-pixel layer evidence (RESTORE-04).
+
+Classes follow the lab schema §3.2:
+
+    1 PRINT          printed text/equation — must be preserved
+    2 PRINT_FIGURE   printed figure/graph lines — must be preserved
+    3 GRADING        colored (red/blue) marking ink — candidate only
+    4 PEN            dark handwriting strokes
+    5 PENCIL         light/graphite strokes
+    6 OVERLAP        print↔annotation overlap or uncertain — review only
+
+Features (chroma, intensity, stroke morphology, neighborhood) feed the
+classifier; they are never removal rules by themselves. A component is
+removable only when its class is an annotation class, its confidence
+clears the calibrated bar, and it does not touch print — everything else
+stays in the source or is promoted to OVERLAP for human review.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import IntEnum
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from PIL import Image, ImageFilter
+
+
+class LayerClass(IntEnum):
+    BACKGROUND = 0
+    PRINT = 1
+    PRINT_FIGURE = 2
+    GRADING = 3
+    PEN = 4
+    PENCIL = 5
+    OVERLAP = 6
+
+
+ANNOTATION_CLASSES = (LayerClass.GRADING, LayerClass.PEN, LayerClass.PENCIL)
+
+# Feature thresholds. These are calibration inputs, not verdicts: each
+# component records a confidence margin relative to them, and removal
+# additionally requires CONFIDENCE_MIN and zero print overlap.
+PRINT_MAX = 55            # print cores live below this; pencil cores reach ~110
+STROKE_MARGIN = 40        # stroke = at least this much darker than local paper
+MIN_MARK_AREA = 150       # px — smaller blobs are antialiased glyph edges
+MAX_PRINT_NEIGHBOR = 0.5  # marks often sit next to print; only reject heavy fusion
+MIN_BBOX_RATIO = 4.0      # strokes are sparse inside their bbox; glyph clusters are not
+MIN_DIAGONAL = 70         # px — marks are large; glyph fragments are small
+CHROMA_MIN = 40           # colored ink (red/blue pens) stands out by chroma
+WHITE_MIN = 245
+PENCIL_MIN = 90           # pencil/graphite cores; darker strokes are pen ink
+FIGURE_RUN_FRAC = 0.6     # a dark run this long inside its bbox = ruled line
+FIGURE_MIN_EXTENT = 100   # px — figures/lines span far more than glyphs
+DILATE_RADIUS = 2
+
+# Dev-fixture calibration knob: removal requires confidence >= this.
+# TODO(RESTORE-04): calibrate per class on the rights-cleared labeled set;
+# a single global bar is the safe interim — below it goes to review.
+CONFIDENCE_MIN = 0.5
+
+
+@dataclass
+class ComponentEvidence:
+    label: int
+    layer: LayerClass
+    bbox: tuple[int, int, int, int]  # x, y, w, h
+    area: int
+    confidence: float
+    overlap_pixels: int = 0
+    removable: bool = False
+    reason: str = ""
+
+
+@dataclass
+class LayerEvidence:
+    """Per-page classification: one class id per pixel + component table."""
+
+    class_map: np.ndarray                       # HxW uint8 of LayerClass
+    components: list[ComponentEvidence] = field(default_factory=list)
+    removal_mask: np.ndarray = None             # approved annotation pixels
+    review_mask: np.ndarray = None              # OVERLAP / low-confidence
+    source_shape: tuple[int, int] = (0, 0)
+
+    def class_mask(self, cls: LayerClass) -> np.ndarray:
+        return self.class_map == int(cls)
+
+
+def classify_layers(
+    gray: np.ndarray, rgb: Optional[np.ndarray] = None
+) -> LayerEvidence:
+    """Assign every ink pixel a layer class with per-component evidence."""
+    h, w = gray.shape
+    class_map = np.zeros((h, w), dtype=np.uint8)
+    components: list[ComponentEvidence] = []
+
+    print_dark = gray < PRINT_MAX
+    bg = np.asarray(
+        Image.fromarray(gray).filter(ImageFilter.GaussianBlur(radius=12)),
+        dtype=np.int16,
+    )
+
+    # --- print classes -----------------------------------------------------
+    labels, counts = _label(print_dark)
+    for lbl, count in counts.items():
+        region = labels == lbl
+        ys, xs = np.nonzero(region)
+        x0, x1 = int(xs.min()), int(xs.max()) + 1
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        bw, bh = x1 - x0, y1 - y0
+        layer = (
+            LayerClass.PRINT_FIGURE
+            if _is_figure_component(region, x0, y0, bw, bh)
+            else LayerClass.PRINT
+        )
+        class_map[region] = int(layer)
+        components.append(
+            ComponentEvidence(
+                label=lbl, layer=layer, bbox=(x0, y0, bw, bh), area=count,
+                confidence=1.0, reason="print_dark",
+            )
+        )
+
+    # --- annotation candidates --------------------------------------------
+    chroma = _chroma(rgb, (h, w))
+    color_cand = (chroma > CHROMA_MIN) & (_rgb_max(rgb, (h, w)) < WHITE_MIN)
+    pencil_cand = (~print_dark) & (gray.astype(np.int16) < bg - STROKE_MARGIN)
+    comp_map = np.zeros((h, w), dtype=np.int32)  # pixel -> component id
+    _classify_annotation(
+        color_cand, class_map, comp_map, components, gray, chroma, print_dark,
+        kind="grading",
+    )
+    _classify_annotation(
+        pencil_cand & ~color_cand, class_map, comp_map, components, gray,
+        chroma, print_dark, kind="stroke",
+    )
+
+    # Dilated coverage — antialiased edges around a confident mark go with it.
+    annotation = np.isin(
+        class_map, [int(c) for c in ANNOTATION_CLASSES] + [int(LayerClass.OVERLAP)]
+    )
+    review = class_map == int(LayerClass.OVERLAP)
+    removable = np.zeros((h, w), dtype=bool)
+    for comp in components:
+        if comp.removable:
+            removable |= comp_map == comp.label
+
+    # Grow removal/review into the antialiased halo of their own components.
+    removal_mask = _dilate(removable, DILATE_RADIUS) & ~print_dark & ~review
+    review_mask = (_dilate(review, 1) & annotation) | review
+    review_mask &= ~removal_mask
+
+    return LayerEvidence(
+        class_map=class_map,
+        components=components,
+        removal_mask=removal_mask,
+        review_mask=review_mask,
+        source_shape=(h, w),
+    )
+
+
+def _is_figure_component(
+    region: np.ndarray, x0: int, y0: int, bw: int, bh: int
+) -> bool:
+    """Long ruled runs or a large sparse extent mark figure/table ink."""
+    if max(bw, bh) >= FIGURE_MIN_EXTENT:
+        sub = region[y0 : y0 + bh, x0 : x0 + bw]
+        for row in sub:
+            if _longest_run(row) >= FIGURE_RUN_FRAC * bw:
+                return True
+        for col in sub.T:
+            if _longest_run(col) >= FIGURE_RUN_FRAC * bh:
+                return True
+    return False
+
+
+def _classify_annotation(
+    cand: np.ndarray,
+    class_map: np.ndarray,
+    comp_map: np.ndarray,
+    components: list[ComponentEvidence],
+    gray: np.ndarray,
+    chroma: np.ndarray,
+    print_dark: np.ndarray,
+    kind: str,
+) -> None:
+    """Split candidate ink into GRADING/PEN/PENCIL or promote to OVERLAP."""
+    labels, counts = _label(cand)
+    # Component ids must be unique across both annotation passes.
+    offset = int(comp_map.max())
+    if offset:
+        lbl_mask = labels > 0
+        labels = labels + offset * lbl_mask.astype(np.int32)
+        counts = {lbl + offset: c for lbl, c in counts.items()}
+    ys, xs = np.nonzero(cand)
+    coords = (
+        np.stack([labels[ys, xs], ys, xs], axis=1)
+        if len(ys)
+        else np.empty((0, 3), dtype=np.int64)
+    )
+    for lbl, count in counts.items():
+        if count < MIN_MARK_AREA:
+            continue
+        region = labels == lbl
+        pts = coords[coords[:, 0] == lbl][:, 1:]
+        y0, y1 = int(pts[:, 0].min()), int(pts[:, 0].max()) + 1
+        x0, x1 = int(pts[:, 1].min()), int(pts[:, 1].max()) + 1
+        bw, bh = x1 - x0, y1 - y0
+        diagonal = (bw * bw + bh * bh) ** 0.5
+        # Classes are disjoint per pixel, so "overlap" means the mark's
+        # antialiased halo touches print cores — a stroke crossing a print
+        # line connects to it under a small dilation.
+        overlap_px = int((_dilate(region, 3) & print_dark).sum())
+
+        # Confidence = smallest normalized margin across the shape checks.
+        margins = [
+            min(1.0, diagonal / (MIN_DIAGONAL * 2)),
+            min(1.0, (bw * bh) / (count * MIN_BBOX_RATIO * 2)),
+        ]
+        if kind == "grading":
+            mean_chroma = float(chroma[region].mean())
+            margins.append(min(1.0, mean_chroma / (CHROMA_MIN * 3)))
+            layer = LayerClass.GRADING
+        else:
+            mean_gray = float(gray[region].mean())
+            layer = LayerClass.PENCIL if mean_gray >= PENCIL_MIN else LayerClass.PEN
+            margins.append(min(1.0, abs(mean_gray - PENCIL_MIN) / 60 + 0.5))
+        confidence = float(min(margins))
+
+        ring = _dilate(region, 3) & ~region
+        print_frac = float(print_dark[ring].mean()) if ring.any() else 0.0
+        uncertain = (
+            overlap_px > 0
+            or print_frac >= MAX_PRINT_NEIGHBOR
+            or diagonal < MIN_DIAGONAL
+            or bw * bh < count * MIN_BBOX_RATIO
+            or confidence < CONFIDENCE_MIN
+        )
+        comp = ComponentEvidence(
+            label=lbl,
+            layer=LayerClass.OVERLAP if uncertain else layer,
+            bbox=(x0, y0, bw, bh),
+            area=count,
+            confidence=round(confidence, 3),
+            overlap_pixels=overlap_px,
+            removable=not uncertain,
+            reason=(
+                "print_overlap" if overlap_px
+                else "print_neighbor" if print_frac >= MAX_PRINT_NEIGHBOR
+                else "low_confidence" if confidence < CONFIDENCE_MIN
+                else "shape_rejected" if uncertain
+                else f"{kind}_confident"
+            ),
+        )
+        class_map[region] = int(comp.layer)
+        comp_map[region] = comp.label
+        components.append(comp)
+
+
+def _chroma(rgb: Optional[np.ndarray], shape: tuple[int, int]) -> np.ndarray:
+    if rgb is None:
+        return np.zeros(shape, dtype=np.int16)
+    if rgb.shape[:2] != shape:
+        rgb = np.asarray(
+            Image.fromarray(rgb.astype(np.uint8)).resize((shape[1], shape[0])),
+            dtype=np.int16,
+        )
+    return rgb.max(axis=2) - rgb.min(axis=2)
+
+
+def _rgb_max(rgb: Optional[np.ndarray], shape: tuple[int, int]) -> np.ndarray:
+    if rgb is None:
+        return np.full(shape, 255, dtype=np.int16)
+    if rgb.shape[:2] != shape:
+        rgb = np.asarray(
+            Image.fromarray(rgb.astype(np.uint8)).resize((shape[1], shape[0])),
+            dtype=np.int16,
+        )
+    return rgb.max(axis=2)
+
+
+def load_rgb(path: Path, shape: tuple[int, int]) -> Optional[np.ndarray]:
+    """RGB evidence for chroma features; PDFs return None."""
+    if not path.exists() or path.suffix.lower() == ".pdf":
+        return None
+    rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.int16)
+    if rgb.shape[:2] != shape:
+        rgb = np.asarray(
+            Image.open(path).convert("RGB").resize((shape[1], shape[0])),
+            dtype=np.int16,
+        )
+    return rgb
+
+
+def overlay_image(gray: np.ndarray, evidence: LayerEvidence) -> Image.Image:
+    """Color-coded review overlay — every kept decision stays inspectable."""
+    colors = {
+        LayerClass.PRINT: (60, 60, 60),
+        LayerClass.PRINT_FIGURE: (30, 90, 200),
+        LayerClass.GRADING: (230, 30, 30),
+        LayerClass.PEN: (240, 140, 0),
+        LayerClass.PENCIL: (200, 190, 40),
+        LayerClass.OVERLAP: (220, 0, 220),
+    }
+    out = np.stack([gray] * 3, axis=2).astype(np.uint8)
+    for cls, rgb in colors.items():
+        out[evidence.class_map == int(cls)] = rgb
+    return Image.fromarray(out, mode="RGB")
+
+
+def _longest_run(row) -> int:
+    if not row.any():
+        return 0
+    padded = np.concatenate(([False], row, [False]))
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.nonzero(diff == 1)[0]
+    ends = np.nonzero(diff == -1)[0]
+    if not len(starts):
+        return 0
+    return int((ends - starts).max())
+
+
+def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
+    out = mask.copy()
+    for _ in range(radius):
+        grown = out.copy()
+        grown[1:] |= out[:-1]
+        grown[:-1] |= out[1:]
+        grown[:, 1:] |= out[:, :-1]
+        grown[:, :-1] |= out[:, 1:]
+        out = grown
+    return out
+
+
+def _label(mask: np.ndarray) -> tuple[np.ndarray, dict[int, int]]:
+    """Two-pass 8-connectivity component labeling (no scipy dependency)."""
+    h, w = mask.shape
+    labels = np.zeros((h, w), dtype=np.int32)
+    parent = [0]
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    next_label = 1
+    for y in range(h):
+        for x in np.nonzero(mask[y])[0]:
+            neighbors = []
+            if x > 0 and labels[y, x - 1]:
+                neighbors.append(labels[y, x - 1])
+            if y > 0:
+                for dx in (-1, 0, 1):
+                    xx = x + dx
+                    if 0 <= xx < w and labels[y - 1, xx]:
+                        neighbors.append(labels[y - 1, xx])
+            if neighbors:
+                m = min(neighbors)
+                labels[y, x] = m
+                for n in neighbors:
+                    union(m, n)
+            else:
+                parent.append(next_label)
+                labels[y, x] = next_label
+                next_label += 1
+
+    counts: dict[int, int] = {}
+    for y in range(h):
+        for x in np.nonzero(mask[y])[0]:
+            r = find(int(labels[y, x]))
+            labels[y, x] = r
+            counts[r] = counts.get(r, 0) + 1
+    return labels, counts

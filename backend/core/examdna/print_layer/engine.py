@@ -7,7 +7,12 @@ def run(ctx: PipelineContext) -> None:
     """Reconstruct the clean printed layer after trace removal."""
     used_restored = 0
     for page in ctx.document.pages:
-        clean = page.original.variants.get("trace_removed")
+        # RESTORE-04: the print layer consumes the policy-filtered
+        # `restored_candidate` (confident, non-overlap annotations removed)
+        # — never the raw candidate mask applied to the source.
+        clean = page.original.variants.get(
+            "restored_candidate"
+        ) or page.original.variants.get("trace_removed")
         if clean:
             used_restored += 1
         page.clean_uri = clean or page.original.variants.get(

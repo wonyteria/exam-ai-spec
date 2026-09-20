@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
+from .layers import LayerClass, classify_layers, load_rgb, overlay_image
 from ..context import PipelineContext
 
 # Print is near-black; pencil graphite sits between print and the local
@@ -23,14 +24,26 @@ WHITE_MIN = 245
 # disables it to reproduce the pre-guard (destructive) output bytes.
 PRESERVE_PRINT_OVERLAP = True
 
+# Cache-migration shim: reproduce the pre-RESTORE-04 removal semantics
+# (dilated pencil|color mask minus print cores, written to the restored
+# path). Only tests/golden/migrate_cache_restore04.py sets this.
+LEGACY_REMOVAL = False
+
 
 def run(ctx: PipelineContext) -> None:
-    """Separate student handwriting/marking traces from the printed layer.
+    """Six-class layer separation (RESTORE-04).
 
-    Emits a per-page trace mask and a trace_removed variant where masked
-    stroke pixels are whitened. Print-layer restoration consumes it.
+    Every ink pixel gets a class (print/figure/grading/pen/pencil/overlap)
+    with per-component evidence. Only confident, non-overlapping
+    annotation components are whiten-candidates — the restored variant is
+    `restored_candidate`, and overlap/uncertain components are preserved
+    and recorded for review. Per-class masks and a color overlay are
+    written next to the variants so every decision stays inspectable.
     """
-    total_marks = 0
+    import hashlib
+
+    total_removed = 0
+    total_review = 0
     work = ctx.workdir / "trace"
     work.mkdir(parents=True, exist_ok=True)
     for page in ctx.document.pages:
@@ -41,40 +54,107 @@ def run(ctx: PipelineContext) -> None:
             continue
 
         gray = np.asarray(Image.open(gray_path).convert("L"), dtype=np.uint8)
-        mask = _trace_mask(gray, ctx.resolve_uri(page.original.uri))
-        # S01 print-destruction guard: never whiten printed cores. Pixels
-        # the trace classifier caught that sit on print-dark strokes are
-        # unmasked and their components recorded as uncertain regions for
-        # original comparison / human review.
-        print_dark = gray < PRINT_MAX
-        overlap = mask & print_dark
-        if PRESERVE_PRINT_OVERLAP and overlap.any():
-            mask = mask & ~print_dark
-            page.uncertain_regions = _uncertain_regions(overlap)
-            ctx.emit(
-                "student_trace",
-                f"페이지 {page.index + 1}: 인쇄 겹침 "
-                f"{len(page.uncertain_regions)}영역을 원본 대조 대상으로 보존",
-                "warn",
+        if LEGACY_REMOVAL:
+            _legacy_run(ctx, page, gray, gray_path, work)
+            continue
+        rgb = load_rgb(ctx.resolve_uri(page.original.uri), gray.shape)
+        evidence = classify_layers(gray, rgb)
+
+        # Per-class evidence masks + review overlay — never merged into
+        # one binary mask (spec 3.2).
+        for cls in LayerClass:
+            if cls == LayerClass.BACKGROUND:
+                continue
+            m = evidence.class_mask(cls)
+            if not m.any():
+                continue
+            p = work / f"{gray_path.stem}_layer_{cls.name.lower()}.png"
+            Image.fromarray((m * 255).astype(np.uint8), mode="L").save(p)
+            page.original.variants[f"layer_{cls.name.lower()}"] = str(p)
+            page.original.variant_sha256[f"layer_{cls.name.lower()}"] = (
+                hashlib.sha256(p.read_bytes()).hexdigest()
             )
-        total_marks += int(mask.sum())
+        overlay_path = work / f"{gray_path.stem}_layer_overlay.png"
+        overlay_image(gray, evidence).save(overlay_path)
+        page.original.variants["layer_overlay"] = str(overlay_path)
 
-        mask_img = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
-        mask_path = work / f"{gray_path.stem}_trace_mask.png"
-        mask_img.save(mask_path)
-        page.trace_mask_uri = str(mask_path)
-
+        # Restoration policy: REMOVE_CONFIDENT_ANNOTATION only — approved
+        # (confident, non-overlap) annotation pixels are whitened; nothing
+        # outside the approved mask may change.
+        mask = evidence.removal_mask
         restored = gray.copy()
         restored[mask] = 255
-        restored_path = work / f"{gray_path.stem}_trace_removed.png"
+        changed = restored != gray
+        assert not (changed & ~mask).any(), "out-of-mask pixel change"
+
+        # OVERLAP / low-confidence components stay untouched and become
+        # review entries (REVIEW_REQUIRED).
+        review_regions = [
+            {
+                "bbox_px": {
+                    "x": c.bbox[0], "y": c.bbox[1], "w": c.bbox[2], "h": c.bbox[3],
+                },
+                "overlap_pixels": c.overlap_pixels,
+                "confidence": c.confidence,
+                "reason": c.reason,
+                "policy": "REVIEW_REQUIRED",
+            }
+            for c in evidence.components
+            if c.layer == LayerClass.OVERLAP
+        ]
+        if review_regions:
+            page.uncertain_regions = review_regions
+            ctx.emit(
+                "student_trace",
+                f"페이지 {page.index + 1}: 겹침/불확실 {len(review_regions)}영역 "
+                f"보존 — 검수 대상",
+                "warn",
+            )
+
+        total_removed += int(mask.sum())
+        total_review += len(review_regions)
+
+        page.trace_mask_uri = str(
+            _save_mask(mask, work / f"{gray_path.stem}_trace_mask.png")
+        )
+
+        restored_path = work / f"{gray_path.stem}_restored_candidate.png"
         Image.fromarray(restored, mode="L").save(restored_path)
-        page.original.variants["trace_removed"] = str(restored_path)
+        page.original.variants["restored_candidate"] = str(restored_path)
+        page.original.variant_sha256["restored_candidate"] = hashlib.sha256(
+            restored_path.read_bytes()
+        ).hexdigest()
+        # `trace_removed` kept as an alias for legacy consumers/migration;
+        # new code must read `restored_candidate`.
+        page.original.variants.setdefault("trace_removed", str(restored_path))
 
     ctx.emit(
         "student_trace",
-        f"{len(ctx.document.pages)}페이지 필기 분리 — 추적 픽셀 {total_marks}",
-        "info" if total_marks else "warn",
+        f"{len(ctx.document.pages)}페이지 6-클래스 분리 — 제거 후보 픽셀 "
+        f"{total_removed}, 검수 영역 {total_review}",
+        "info" if total_removed or not total_review else "warn",
     )
+
+
+def _save_mask(mask: np.ndarray, path: Path) -> Path:
+    Image.fromarray((mask * 255).astype(np.uint8), mode="L").save(path)
+    return path
+
+
+def _legacy_run(ctx, page, gray: np.ndarray, gray_path: Path, work: Path) -> None:
+    """Pre-RESTORE-04 semantics for golden-cache key reproduction only."""
+    mask = _trace_mask(gray, ctx.resolve_uri(page.original.uri))
+    if PRESERVE_PRINT_OVERLAP:
+        mask = mask & ~(gray < PRINT_MAX)
+    page.trace_mask_uri = str(
+        _save_mask(mask, work / f"{gray_path.stem}_trace_mask.png")
+    )
+    restored = gray.copy()
+    restored[mask] = 255
+    restored_path = work / f"{gray_path.stem}_restored_candidate.png"
+    Image.fromarray(restored, mode="L").save(restored_path)
+    page.original.variants["restored_candidate"] = str(restored_path)
+    page.original.variants["trace_removed"] = str(restored_path)
 
 
 def _trace_mask(gray: np.ndarray, original: Path) -> np.ndarray:
