@@ -39,6 +39,10 @@ class PipelineContext:
     artifact_proof: Optional[dict] = None
 
     def emit(self, stage: str, message: str, level: str = "info") -> None:
+        # WP10: secrets/paths/emails never reach stored job events.
+        from core.logscrub import scrub_text
+
+        message = scrub_text(message)
         if self.event_sink is not None:
             self.event_sink(stage, message, level)
         else:

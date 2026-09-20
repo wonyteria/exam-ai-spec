@@ -34,6 +34,9 @@ class GateReport(BaseModel):
     math_check_failed: int = 0
     unverified: int = 0
     hwp_mismatch: int = 0
+    # RESTORE-18: occluded print regions with no verified reference —
+    # REVIEW_REQUIRED decisions block release, never silently pass.
+    reconstruction_pending: int = 0
     # RESTORE-07: expected-manifest reconciliation + artifact proof.
     manifest_mismatch: int = 0
     unprocessed_pages: int = 0
@@ -116,6 +119,13 @@ def evaluate_gate(
         gaps = sorted(set(range(min(numbers), max(numbers) + 1)) - seen)
         report.missing_object += len(gaps)
         report.missing_numbers = gaps
+
+    for page in document.pages:
+        report.reconstruction_pending += sum(
+            1
+            for d in page.reconstruction
+            if d.get("decision") == "REVIEW_REQUIRED"
+        )
 
     report.document_empty = len(document.questions) == 0
 

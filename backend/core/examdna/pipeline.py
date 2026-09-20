@@ -4,6 +4,7 @@ from jobs.models import JobState
 from . import export_verification, preprocessing, rendering
 from .context import PipelineContext, StageFn
 from .print_layer import engine as print_layer_engine
+from .reconstruction import engine as reconstruction_engine
 from .recognition import runner as recognition_runner
 from .recognition import segmenter
 from .source_truth import consensus
@@ -15,6 +16,7 @@ STAGES: list[tuple[JobState, str, StageFn]] = [
     (JobState.PREPROCESSING, "preprocessing", preprocessing.run),
     (JobState.SEPARATING_TRACES, "student_trace", separator.run),
     (JobState.RESTORING_PRINT, "print_layer", print_layer_engine.run),
+    (JobState.RESTORING_PRINT, "reconstruction", reconstruction_engine.run),
     (JobState.RECOGNIZING, "segmentation", segmenter.run),
     (JobState.RECOGNIZING, "recognition", recognition_runner.run),
     (JobState.VERIFYING_SOURCE, "source_verification", consensus.run),

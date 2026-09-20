@@ -278,6 +278,9 @@ class ChangeOp(BaseModel):
         "SetEquation",
         "AddQuestion",
         "RemoveQuestion",
+        "MoveQuestion",
+        "SwapQuestions",
+        "ReorderQuestions",
     ]
     target_id: Optional[str] = None  # question/atu/object id where relevant
     field: Optional[str] = None

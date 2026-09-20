@@ -175,6 +175,11 @@ class Question(BaseModel):
     # RESTORE-01/03: provenance — where in the immutable source this
     # question was detected, plus the transform chain back to source px.
     source_anchor: Optional[SourceAnchor] = None
+    # RESTORE-15/19: semantic problem structure + QuestionDNA feature
+    # vector — derived data, serialized into the Canonical Exam.
+    problem_graph: Optional[dict[str, Any]] = None
+    question_dna: Optional[dict[str, Any]] = None
+    answer_space_lines: Optional[int] = None
     atus: list[ATU] = Field(default_factory=list)
     verification: QuestionVerification = Field(default_factory=QuestionVerification)
 
@@ -272,10 +277,15 @@ class Page(BaseModel):
     # bands, question bodies, tables, answer space. Typed for routing;
     # never silently dropped.
     regions: list[dict[str, Any]] = Field(default_factory=list)
+    # ReconstructionDNA (RESTORE-18): per-region occlusion decisions —
+    # PRESERVE_ORIGINAL | RESTORE_REFERENCE | REVIEW_REQUIRED, each with
+    # provenance. No generative inpainting is ever a source of truth.
+    reconstruction: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ExamMetadata(BaseModel):
     school: str = ""
+    title: str = ""
     year: Optional[int] = None
     grade: str = ""
     semester: Optional[int] = None

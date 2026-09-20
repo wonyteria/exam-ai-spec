@@ -18,10 +18,17 @@ from jobs.worker import run_once
 from storage.local import LocalObjectStore, sanitize_filename
 from tenancy.auth import AuthContext, audit, require_action
 from tenancy.db import TenancyDB
+from tenancy.limits import QuotaExceeded, TenantLimiter
 
 from ..deps import get_canonical, get_object_store, get_store, get_tenancy
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+
+_LIMITER = TenantLimiter()
+
+
+def get_limiter() -> TenantLimiter:
+    return _LIMITER
 
 MAX_FILE_BYTES = 50 * 1024 * 1024  # ADR baseline: 50 MiB per file
 MAX_FILES = 50
@@ -153,6 +160,15 @@ async def upload(
         raise HTTPException(400, f"too many files (max {MAX_FILES} pages)")
 
     assert ctx.tenant_id is not None
+    # WP10: per-tenant rate limit — exceeded requests are rejected as
+    # 429 before any byte is stored.
+    try:
+        get_limiter().check_rate(ctx.tenant_id)
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            429, {"error": {"code": "RATE_LIMITED", "message": exc.detail,
+                            "retryable": True}},
+        )
     doc = Document(tenant_id=ctx.tenant_id)
 
     # 1) Validate everything before storing anything — a bad file fails the
@@ -297,6 +313,17 @@ async def upload(
         )
 
     store.save_document(doc)
+
+    # WP10: charge the tenant byte budget for accepted source bytes.
+    try:
+        get_limiter().charge_bytes(
+            ctx.tenant_id, sum(len(e["data"]) for e in staged)
+        )
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            429, {"error": {"code": "BUDGET_EXCEEDED",
+                            "message": exc.detail, "retryable": False}},
+        )
 
     # Canonical record + first revision (bound to the manifest) + durable job.
     service = MutationService(cstore, tenancy)

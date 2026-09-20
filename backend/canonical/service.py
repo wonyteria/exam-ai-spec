@@ -690,6 +690,54 @@ class MutationService:
                 q = self._find_question(doc, op.target_id)
                 doc.questions = [x for x in doc.questions if x.id != q.id]
                 summary.append({"op": "RemoveQuestion", "question": op.target_id})
+            elif op.op == "SwapQuestions":
+                a = self._find_question(doc, op.target_id)
+                b = self._find_question(doc, op.value)
+                ia = next(i for i, x in enumerate(doc.questions) if x.id == a.id)
+                ib = next(i for i, x in enumerate(doc.questions) if x.id == b.id)
+                doc.questions[ia], doc.questions[ib] = (
+                    doc.questions[ib],
+                    doc.questions[ia],
+                )
+                a.number, b.number = b.number, a.number
+                summary.append(
+                    {"op": "SwapQuestions", "a": a.id, "b": b.id}
+                )
+            elif op.op == "MoveQuestion":
+                q = self._find_question(doc, op.target_id)
+                rest = [x for x in doc.questions if x.id != q.id]
+                try:
+                    pos = int(op.value)
+                except (TypeError, ValueError):
+                    raise ValidationError(
+                        "MoveQuestion requires value=target index"
+                    )
+                pos = max(0, min(pos, len(rest)))
+                rest.insert(pos, q)
+                doc.questions = rest
+                summary.append(
+                    {"op": "MoveQuestion", "question": q.id, "to": pos}
+                )
+            elif op.op == "ReorderQuestions":
+                order = op.value if isinstance(op.value, list) else []
+                if not order:
+                    raise ValidationError(
+                        "ReorderQuestions requires value=ordered id list"
+                    )
+                wanted = [self._find_question(doc, t) for t in order]
+                if len({q.id for q in wanted}) != len(wanted):
+                    raise ValidationError("duplicate id in reorder list")
+                remaining = [
+                    q for q in doc.questions
+                    if q.id not in {w.id for w in wanted}
+                ]
+                doc.questions = wanted + remaining
+                summary.append(
+                    {
+                        "op": "ReorderQuestions",
+                        "order": [q.id for q in wanted],
+                    }
+                )
             elif op.op == "SetStyle":
                 if op.field not in {"brand_id", "template_id"}:
                     raise ValidationError(f"unknown style field {op.field}")
