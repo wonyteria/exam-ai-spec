@@ -27,6 +27,9 @@ def default_providers() -> Providers:
         reasoning=[llm.get_provider()],
         solver=[solver.get_provider()],
     )
+    page_extractor = vision.get_page_extractor()
+    if page_extractor is not None:
+        providers.vision.insert(0, page_extractor)
     openai = _openai_provider()
     if openai is not None:
         providers.ocr.insert(0, openai)
