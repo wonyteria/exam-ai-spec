@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from document.models import BBox, Question, SourceRef
 from ..context import PipelineContext
@@ -119,18 +120,66 @@ def _classify_regions(ctx, page, questions) -> None:
         import numpy as np
         from PIL import Image
 
-        from document.regions import classify_regions
+        from document.regions import RegionKind, classify_regions
 
         gray = np.asarray(Image.open(path).convert("L"))
-        page.regions = [
-            r.model_dump() for r in classify_regions(gray, questions, page.index)
-        ]
+        regions = classify_regions(gray, questions, page.index)
+        page.regions = [r.model_dump() for r in regions]
+        # FigureDNA: extract candidate scenes inside question bodies —
+        # the scene is a candidate for semantic checks, never a verdict.
+        for q in questions:
+            bbox = getattr(getattr(q, "source", None), "bbox", None)
+            if bbox is None:
+                continue
+            sub = gray[
+                int(bbox.y) : int(bbox.y + bbox.h),
+                int(bbox.x) : int(bbox.x + bbox.w),
+            ]
+            if sub.size == 0:
+                continue
+            payload = _extract_figure_scene(sub)
+            if payload is not None:
+                payload["question_id"] = q.id
+                page.regions.append(payload)
     except Exception as exc:  # noqa: BLE001
         ctx.emit(
             "segmentation",
             f"페이지 {page.index + 1}: 영역 분류 실패 — {exc}",
             "warn",
         )
+
+
+def _extract_figure_scene(sub) -> Optional[dict]:
+    """Candidate FigureScene for a question's ink, attached only when
+    enough geometric structure exists. Validation errors are recorded as
+    evidence, never hidden."""
+    import numpy as np
+
+    if int((sub < 150).sum()) < 200:  # too little ink to be a figure
+        return None
+    try:
+        from document.scene import validate_scene
+
+        from ..figure_trace.extractor import extract_scene
+    except Exception:
+        return None
+    result = extract_scene(sub)
+    if len(result.scene.primitives) < 3:
+        return None
+    errors = validate_scene(result.scene)
+    h, w = sub.shape
+    return {
+        "kind": "FIGURE",
+        "bbox_px": {"x": 0, "y": 0, "w": float(w), "h": float(h)},
+        "confidence": round(result.confidence, 3),
+        "evidence": (
+            f"scene:{len(result.scene.primitives)}prim/"
+            f"{len(result.scene.relations)}rel"
+            + (f" errors:{len(errors)}" if errors else "")
+        ),
+        "figure_scene": result.scene.model_dump(),
+        "scene_errors": errors,
+    }
 
 
 def _region_candidates(provider, image: Path, page_index: int, ctx) -> list[dict]:
