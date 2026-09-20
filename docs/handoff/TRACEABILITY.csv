@@ -146,3 +146,23 @@ RESTORE,RESTORE-06,FigureGraph 시맨틱 검증·오류 장면 게이팅,REQ-08;
 RESTORE,RESTORE-07,기대 manifest 커버리지·산출물 해시 게이트,REQ-11;REQ-17,WP02;WP08,AT-045;AT-046;AT-048,P1,DONE,PASS,backend/tests/test_restore07.py (14)
 RESTORE,RESTORE-08,HWPX/HWP/PDF 왕복 증명·역검증,REQ-17;REQ-18,WP08,AT-039;AT-040;AT-045;AT-047;AT-053,P1,DONE,PASS,backend/tests/test_restore08.py (5)
 RESTORE,RESTORE-09,가족 단위 홀드아웃 분할·릴리스 게이트,REQ-27;REQ-28,WP00;WP11,AT-058;AT-059;AT-060,P1,DONE,PASS,backend/tests/test_restore09.py (14); docs/handoff/RESTORE09_RELEASE_GATE.md
+RESTORE,RESTORE-10A,OSS 발견·라이선스 레지스트리,REQ-21,WP00;WP11,AT-058,P1,DONE,PASS,docs/OSS_DISCOVERY_REPORT.md; docs/OSS_DEPENDENCY_REGISTRY.md
+RESTORE,RESTORE-10B,골드 격리 벤치 하니스·합성 손상 생성기,REQ-21;REQ-27,WP00;WP11,AT-058;AT-059,P1,DONE,PASS,backend/tests/test_restore10b.py (15); docs/handoff/evidence/bench/
+RESTORE,RESTORE-11,14클래스 LayerDNA taxonomy 확장,REQ-05;REQ-08,WP05,AT-021;AT-022,P1,DONE,PASS,backend/tests/test_restore11.py
+RESTORE,RESTORE-12,라인 OCR→구조화 문항 추출 브릿지,REQ-06;REQ-10,WP04,AT-020;AT-023,P1,DONE,PASS,backend/tests/test_restore12.py
+RESTORE,RESTORE-13,MathDNA SymPy 결정론 검증기,REQ-10;REQ-11,WP04;WP05,AT-027;AT-028,P1,DONE,PASS,backend/tests/test_restore13.py (18)
+RESTORE,RESTORE-14,FigureDNA 픽셀→그래프 추출기·PDF 클래스 센서스,REQ-08;REQ-10,WP05,AT-031;AT-038,P1,DONE,PASS,backend/tests/test_restore14_figuredna.py (7); backend/tests/test_restore14.py
+RESTORE,RESTORE-15,ProblemDNA 의미 모순 검출·전처리 변형,REQ-10;REQ-11,WP05,AT-028;AT-045,P1,DONE,PASS,backend/tests/test_restore15_problem.py (6)
+RESTORE,RESTORE-16,SolveDNA 수식 답 재검증,REQ-10;REQ-11,WP05,AT-027;AT-045,P1,DONE,PASS,backend/tests/test_restore13.py; backend/core/examdna/verification/solving.py
+RESTORE,RESTORE-17,EvidenceDNA 번들·네이티브 PDF 증거군,REQ-10;REQ-11,WP04;WP05,AT-028,P1,DONE,PASS,backend/tests/test_restore16.py
+RESTORE,RESTORE-18,ReconstructionDNA 오클루전 정책 엔진,REQ-05;REQ-08;REQ-11,WP03;WP05,AT-021;AT-045,P1,DONE,PASS,backend/tests/test_restore18_reconstruction.py (6)
+RESTORE,RESTORE-19,Canonical Exam 직렬화·안정 digest,REQ-11;REQ-17,WP08,AT-045;AT-048,P1,DONE,PASS,backend/tests/test_restore19_20_canonical_blind.py; backend/canonical/exam.py
+RESTORE,RESTORE-20,Blind Evaluation 예측 봉인·변조 감지,REQ-27,WP11,AT-058;AT-059,P1,DONE,PASS,backend/eval/blind.py; backend/tests/test_restore19_20_canonical_blind.py
+RESTORE,RESTORE-21,HWPX보내기+왕복(RESTORE-08 증거),REQ-17;REQ-18,WP08,AT-039;AT-040,P1,DONE,PASS,backend/tests/test_restore08.py
+RESTORE,RESTORE-22,DOCX보내기+왕복 역검증,REQ-17,WP07;WP08,AT-044;AT-046,P1,DONE,PASS,backend/renderers/docx/; backend/qa/docx_proof.py; backend/tests/test_restore22_docx.py (6)
+RESTORE,RESTORE-23,AcademyDNA MVP·StyleDNA 추출,REQ-16,WP07;WP09,AT-041;AT-051;AT-061,P1,DONE,PASS,backend/academy/profile.py; backend/tests/test_restore23_27_academy_dna.py
+RESTORE,RESTORE-24,QuestionDNA 결정론 특징 추출,REQ-10;REQ-11,WP05,AT-058,P1,DONE,PASS,backend/question_dna/dna.py; backend/tests/test_restore23_27_academy_dna.py
+RESTORE,RESTORE-25,Exam Agent MVP·NL→Canonical op·미리보기,REQ-11;REQ-14,WP06;WP09,AT-037,P1,DONE,PASS,backend/agent/ops.py; backend/tests/test_restore25_28_agent_composer.py
+RESTORE,RESTORE-26,Variation Engine·AST 수치 변형·선지 순열,REQ-10;REQ-11,WP05,AT-058,P1,DONE,PASS,backend/variation/engine.py; backend/tests/test_restore25_28_agent_composer.py
+RESTORE,RESTORE-27,Difficulty Engine·특징 기반 난이도 상/중/하,REQ-10,WP05,AT-058,P1,DONE,PASS,backend/question_dna/dna.py; backend/tests/test_restore23_27_academy_dna.py
+RESTORE,RESTORE-28,Exam Composer·난이도 혼합·A/B형+버전별 정답표,REQ-11;REQ-16,WP05;WP07,AT-058,P1,DONE,PASS,backend/composer/engine.py; backend/tests/test_restore25_28_agent_composer.py
