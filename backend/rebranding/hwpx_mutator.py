@@ -8,6 +8,7 @@ changed. Anything unexpected aborts before producing output.
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import re
 import zipfile
@@ -218,24 +219,34 @@ _WATERMARK_PIC = (
     '<hp:effects/>'
     '<hp:sz width="{w}" widthRelTo="ABSOLUTE" height="{h}" heightRelTo="ABSOLUTE" protect="0"/>'
     '<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" '
-    'holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="CENTER" '
-    'horzAlign="CENTER" vertOffset="0" horzOffset="0"/>'
+    'holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="TOP" '
+    'horzAlign="LEFT" vertOffset="{vo}" horzOffset="{ho}"/>'
     '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
     '<hp:shapeComment>watermark</hp:shapeComment>'
     "</hp:pic><hp:t/></hp:run></hp:p>"
 )
 
-_HEADER = (
-    f'<hp:header xmlns:hp="{HP}" id="0" applyPageType="BOTH">'
-    '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" '
-    'vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" '
-    'textHeight="0" hasTextRef="0" hasNumRef="0">{inner}</hp:subList></hp:header>'
-)
 
 
-def _watermark_para(item_id: str, scale: float, opacity: float) -> ET.Element:
-    width = int(59528 * min(max(scale, 0.2), 0.5))
+
+def _page_size(doc: "_Doc") -> tuple[int, int]:
+    """(width, height) in HWP units from the section's pagePr — A4 default."""
+    for pp in doc.root.iter(f"{{{HP}}}pagePr"):
+        try:
+            return int(pp.get("width", "59528")), int(pp.get("height", "84186"))
+        except ValueError:
+            break
+    return 59528, 84186
+
+
+def _watermark_para(
+    item_id: str, scale: float, opacity: float, page_w: int, page_h: int
+) -> ET.Element:
+    width = int(page_w * min(max(scale, 0.2), 0.5))
     height = int(width * 0.35)
+    # real Hancom files anchor floating shapes with PAPER+TOP/LEFT and an
+    # explicit offset — the observed CENTER alignment rendered at the top
+    # band, so center it ourselves: offset = (page - shape) / 2
     frag = _WATERMARK_PIC.format(
         w=width,
         h=height,
@@ -243,70 +254,112 @@ def _watermark_para(item_id: str, scale: float, opacity: float) -> ET.Element:
         cy=height // 2,
         item=item_id,
         alpha=int(min(max(opacity, 0.02), 0.5) * 255),
+        vo=max(0, (page_h - height) // 2),
+        ho=max(0, (page_w - width) // 2),
     )
     return ET.fromstring(frag)
 
 
-def _add_watermark(
-    doc: _Doc, op: RebrandOperation, logo_item_id: str
-) -> tuple[str, ET.Element | None, list[tuple[ET.Element, str, dict]]]:
-    """Merge one behind-text paper-centered pic into the section's per-page
-    host. Real HWP renders paper-anchored header content on every page, and
-    a fabricated hp:masterPage ctrl is *invalid HWPML* — Hancom crashes on
-    it (observed: COM RPC failure on Open). Order: merge into an existing
-    masterPage when present, else every existing header (covers ODD/EVEN/
-    FIRST variants), else create a real hp:header ctrl — never a
-    masterPage shell.
+_SECPR = f"{{{HP}}}secPr"
+_MP_REF = f"{{{HP}}}masterPage"
+_MASTERPAGE_PART = re.compile(r"^Contents/masterpage(\d+)\.xml$")
 
-    Returns (label, created_control_el, [(ancestor, pre_digest, pre_runs)]).
-    The watermark para is APPENDED so existing run indices stay stable."""
-    payload = op.payload
+# A real 바탕쪽 is a separate package part (Contents/masterpageN.xml) whose
+# root <masterPage> is un-namespaced and whose story lives in one
+# hp:subList. Sections own master pages *positionally*: walking sections in
+# order, each consumes masterPageCnt parts. Verified against a real
+# Hancom-authored HWPX (sample-masterpage-cover.hwpx) — and against Hancom
+# itself: fabricated hp:ctrl/hp:masterPage children are rejected on Open.
+_MASTERPAGE_NS = (
+    'xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app" '
+    f'xmlns:hp="{HP}" '
+    'xmlns:hp10="http://www.hancom.co.kr/hwpml/2016/paragraph" '
+    'xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" '
+    f'xmlns:hc="{HC}" '
+    'xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head" '
+    'xmlns:hhs="http://www.hancom.co.kr/hwpml/2011/history" '
+    'xmlns:hm="http://www.hancom.co.kr/hwpml/2011/master-page" '
+    'xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf" '
+    'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+    'xmlns:opf="http://www.idpf.org/2007/opf/" '
+    'xmlns:ooxmlchart="http://www.hancom.co.kr/hwpml/2016/ooxmlchart" '
+    'xmlns:hwpunitchar="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar" '
+    'xmlns:epub="http://www.idpf.org/2007/ops" '
+    'xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0"'
+)
 
-    def _make_para() -> ET.Element:
-        return _watermark_para(
-            logo_item_id, payload.get("scale", 0.35), payload.get("opacity", 0.10)
-        )
 
-    hosts = [
-        child for _c, child in _iter_ctrl_pairs(doc)
-        if _local(child.tag) == "masterPage"
-    ]
-    kind = "masterPage"
-    if not hosts:
-        kind = "header"
-        hosts = [
-            child for _c, child in _iter_ctrl_pairs(doc)
-            if _local(child.tag) == "header"
-        ]
-    if hosts:
-        touched: list[tuple[ET.Element, str, dict]] = []
-        for host in hosts:
-            pre_dg = _el_digest(host)
-            pre_runs = _runs_in(host)
-            sub = host.find(_SUBLIST)
-            if sub is None:
-                sub = ET.SubElement(host, _SUBLIST)
-            sub.append(_make_para())
-            touched.append((host, pre_dg, pre_runs))
-        return f"{doc.name}/{kind}/watermark", None, touched
+def _masterpage_names(entries: dict[str, bytes]) -> list[str]:
+    return sorted(
+        (n for n in entries if _MASTERPAGE_PART.match(n)),
+        key=lambda n: int(_MASTERPAGE_PART.match(n).group(1)),  # type: ignore[union-attr]
+    )
 
-    # no per-page host at all — create a real header ctrl in the
-    # section-properties run (same place header/footer controls live)
-    target_run = None
-    for p in doc.root.iter(_P):
-        for run in p.findall(_RUN):
-            if run.find(f"{{{HP}}}secPr") is not None or run.find(_CTRL) is not None:
-                target_run = run
-                break
-        if target_run is not None:
+
+def _secprs(docs: dict[str, "_Doc"]) -> dict[str, ET.Element]:
+    """sec_label -> the section's hp:secPr element (first one wins)."""
+    out: dict[str, ET.Element] = {}
+    for label, doc in docs.items():
+        for el in doc.root.iter(_SECPR):
+            out[label] = el
             break
-    if target_run is None:
-        raise PlanError("NO_ANCHOR", f"{doc.name}: no run to host header")
-    inner = ET.tostring(_make_para(), encoding="unicode")
-    frag = ET.fromstring(_HEADER.format(inner=inner))
-    ctrl = ET.SubElement(target_run, _CTRL)
-    ctrl.append(frag)
-    return f"{doc.name}/header/watermark", frag, []
+    return out
+
+
+def _section_order(docs: dict[str, "_Doc"]) -> list[str]:
+    def _idx(label: str) -> int:
+        m = re.search(r"section(\d+)\.xml$", label)
+        return int(m.group(1)) if m else 0
+
+    return sorted(docs, key=_idx)
+
+
+def _masterpage_xml(part_id: str, inner: str, text_w: int, text_h: int) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+        f'<masterPage {_MASTERPAGE_NS} id="{part_id}" type="BOTH" '
+        'pageNumber="0" pageDuplicate="0" pageFront="0">'
+        '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" '
+        'vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" '
+        f'textWidth="{text_w}" textHeight="{text_h}" '
+        'hasTextRef="0" hasNumRef="0">'
+        + inner
+        + "</hp:subList></masterPage>"
+    ).encode("utf-8")
+
+
+def _inject_hpf_item_xml(hpf: bytes, item_id: str, href: str) -> bytes:
+    """Register a non-image package part (media-type application/xml)."""
+    if not hpf:
+        raise PlanError("MANIFEST_MISSING", f"{_HPF_NAME} absent")
+    text = hpf.decode("utf-8")
+    idx = text.find("</opf:manifest>")
+    if idx < 0:
+        raise PlanError(
+            "MANIFEST_MISSING", f"{_HPF_NAME} has no opf:manifest — fail closed"
+        )
+    item = (
+        f'<opf:item id="{item_id}" href="{href}" '
+        'media-type="application/xml"/>'
+    )
+    return (text[:idx] + item + text[idx:]).encode("utf-8")
+
+
+def _text_area(doc: "_Doc") -> tuple[int, int, int, int]:
+    """(page_w, page_h, text_w, text_h) from pagePr + margin."""
+    page_w, page_h = _page_size(doc)
+    for pp in doc.root.iter(f"{{{HP}}}pagePr"):
+        m = pp.find(f"{{{HP}}}margin")
+        if m is not None:
+            try:
+                l = int(m.get("left", "2834"))
+                r = int(m.get("right", "2834"))
+                t = int(m.get("top", "1417"))
+                b = int(m.get("bottom", "1417"))
+                return page_w, page_h, max(1, page_w - l - r), max(1, page_h - t - b)
+            except ValueError:
+                break
+    return page_w, page_h, page_w, page_h
 
 
 _HPF_NAME = "Contents/content.hpf"
@@ -352,12 +405,6 @@ def _inject_hpf_item(hpf: bytes, item_id: str, href: str) -> bytes:
             "MANIFEST_MISSING", f"{_HPF_NAME} has no opf:manifest — fail closed"
         )
     return (text[:idx] + item + text[idx:]).encode("utf-8")
-
-
-def _iter_ctrl_pairs(doc: _Doc):
-    for ctrl in doc.root.iter(_CTRL):
-        for child in list(ctrl):
-            yield ctrl, child
 
 
 # --- main entry -------------------------------------------------------------------
@@ -449,6 +496,32 @@ def apply_plan(
             head_fills_before, head_other_before = _fill_inventory(head_doc)
         return head_doc
 
+    # Contents/masterpageN.xml parts are likewise loaded lazily — ops that
+    # target 바탕쪽 content (master-page titles, page fields) resolve into
+    # the part doc, which joins the same before/after inventory. Parts may
+    # be *renamed* by the watermark pass below, so each doc tracks the
+    # entry name its bytes must be written back under.
+    part_docs: dict[str, _Doc] = {}          # original label -> doc
+    part_current: dict[str, str] = {}        # original label -> current label
+    part_rev: dict[str, str] = {}            # current label -> original label
+    allowed_new_body_paths: set[str] = set()  # appended watermark paras
+
+    def _part_doc(label: str) -> _Doc:
+        orig = part_rev.get(label, label)
+        if orig not in part_docs:
+            raw = entries.get(f"Contents/{label}")
+            if raw is None:
+                raw = entries.get(f"Contents/{orig}")
+            if raw is None:
+                raise PlanError("PATH_SECTION", f"no part {label}")
+            part_docs[orig] = _Doc(orig, raw)
+            part_current[orig] = label
+            doc = part_docs[orig]
+            for path, el in _inventory(doc):
+                before[f"{orig}/{path}"] = _el_digest(el)
+            before_body.update(_body_inventory(doc))
+        return part_docs[orig]
+
     for op in plan.operations:
         if op.section == "settings.xml":
             if op.op is not RebrandOpKind.CLEAR_PRINT_PAGE_TOKEN:
@@ -457,7 +530,7 @@ def apply_plan(
 
         doc = docs.get(op.section)
         if doc is None:
-            raise PlanError("PATH_SECTION", f"no section {op.section}")
+            doc = _part_doc(op.section)  # masterpageN.xml — raises if absent
         if op.op is RebrandOpKind.ADD_WATERMARK_SHAPE:
             continue  # resolved inside the section's master page at apply time
 
@@ -490,7 +563,7 @@ def apply_plan(
                     RebrandOpKind.REMOVE_PAGE_NUM_FIELD,
                 }:
                     removed_child_digest.add(_el_digest(el))
-            elif segs[0] == "body" and segs[1].startswith("p["):
+            elif segs[0] in {"body", "sublist"} and segs[1].startswith("p["):
                 para = doc.resolve("/".join(path.split("/")[:3]))
                 touched_para[id(para)] = (para, _stripped_digest(para))
                 touched_body_paths.add("/".join(path.split("/")[:3]))
@@ -498,8 +571,9 @@ def apply_plan(
                     ri: (_el_digest(r), _direct_text(r))
                     for ri, r in enumerate(para.findall(_RUN))
                 }
-                # target nested in run[j] (글상자/drawText) — the host run's
-                # digest legitimately changes, so exempt exactly that index
+                # target nested in run[j] (글상자/drawText, or a field inside
+                # a masterpage part) — the host run's digest legitimately
+                # changes, so exempt exactly that index
                 rm = re.match(r"run\[(\d+)\]", segs[2]) if len(segs) > 2 else None
                 if rm:
                     para_runs_allowed.setdefault(id(para), set()).add(int(rm.group(1)))
@@ -551,22 +625,123 @@ def apply_plan(
         )
         touched.add("settings.xml")
 
-    for op in plan.operations:
-        if op.section == "settings.xml":
-            continue
-        if op.op is RebrandOpKind.ADD_WATERMARK_SHAPE:
-            doc = docs[op.section]
-            label, created_el, anc_list = _add_watermark(doc, op, logo_item_id)
-            added.append(label)
-            if created_el is not None:
-                added_controls.append(created_el)
-            for anc_el, pre_dg, pre_runs in anc_list:
-                # keep the EARLIEST captured pre-digest — an earlier field
-                # removal may already have recorded the true "before" state
-                if id(anc_el) not in touched_anc:
-                    touched_anc[id(anc_el)] = (anc_el, pre_dg)
-                anc_runs_before.setdefault(id(anc_el), pre_runs)
-                watermark_anc.add(id(anc_el))
+    # --- 바탕쪽: real masterPage *package parts* ------------------------------
+    # A section's master pages are separate Contents/masterpageN.xml parts
+    # owned positionally — walking sections in order, each consumes
+    # `masterPageCnt` parts. Hancom renders their floating objects natively
+    # centered behind text on every page (verified: inline hp:ctrl
+    # fabrications are rejected on Open; separate parts open + render).
+    wm_ops = [
+        op for op in plan.operations
+        if op.op is RebrandOpKind.ADD_WATERMARK_SHAPE
+        and op.section != "settings.xml"
+    ]
+    mp_before_digest: dict[str, str] = {}    # full part name -> sha256 before
+    mp_new_parts: set[str] = set()
+    if wm_ops:
+        secprs = _secprs(docs)
+        for name in _masterpage_names(entries):
+            mp_before_digest[name] = hashlib.sha256(entries[name]).hexdigest()
+        for sec_label in _section_order(docs):
+            op = next((o for o in wm_ops if o.section == sec_label), None)
+            if op is None:
+                continue
+            secpr = secprs.get(sec_label)
+            if secpr is None:
+                raise PlanError(
+                    "NO_ANCHOR",
+                    f"{sec_label}: no secPr — cannot link a master page",
+                )
+            doc = docs[sec_label]
+            page_w, page_h, text_w, text_h = _text_area(doc)
+
+            def _wm_para() -> ET.Element:
+                return _watermark_para(
+                    logo_item_id,
+                    op.payload.get("scale", 0.35),
+                    op.payload.get("opacity", 0.10),
+                    page_w,
+                    page_h,
+                )
+
+            # the real linkage: <hp:masterPage idRef="masterpageN"/> children
+            # inside hp:secPr — masterPageCnt is just their count. A section
+            # can own several master pages (ODD/EVEN/OPTIONAL_PAGE) — merge
+            # into EVERY referenced part so all pages are covered.
+            refs = [
+                ch.get("idRef")
+                for ch in secpr.findall(_MP_REF)
+                if ch.get("idRef")
+            ]
+            if refs:
+                for ref in refs:
+                    label = f"{ref}.xml"
+                    if f"Contents/{label}" not in entries:
+                        raise PlanError(
+                            "PART_MISSING",
+                            f"{sec_label}: {ref} referenced but part absent",
+                        )
+                    mp_doc = _part_doc(label)
+                    sub = mp_doc.root.find(_SUBLIST)
+                    if sub is None:
+                        sub = ET.SubElement(mp_doc.root, _SUBLIST)
+                    allowed_new_body_paths.add(
+                        f"{mp_doc.name}/sublist/p[{len(sub.findall(_P))}]"
+                    )
+                    sub.append(_wm_para())
+                    added.append(f"{mp_doc.name}/watermark")
+            else:
+                # no master page yet — create a real part AND the secPr
+                # idRef child that links it (verified against a real
+                # Hancom-authored masterpage: idRef is what activates it)
+                used = {
+                    int(_MASTERPAGE_PART.match(n).group(1))  # type: ignore[union-attr]
+                    for n in entries
+                    if _MASTERPAGE_PART.match(n)
+                }
+                idx = 0
+                while idx in used:
+                    idx += 1
+                part_id = f"masterpage{idx}"
+                part_name = f"Contents/{part_id}.xml"
+                entries[part_name] = _masterpage_xml(
+                    part_id,
+                    ET.tostring(_wm_para(), encoding="unicode"),
+                    text_w,
+                    text_h,
+                )
+                mp_new_parts.add(part_name)
+                ref_el = ET.SubElement(secpr, _MP_REF)
+                ref_el.set("idRef", part_id)
+                secpr.set("masterPageCnt", str(len(refs) + 1))
+                added.append(f"{part_name}/watermark")
+                # the secPr lives inside a body para's run — whitelist that
+                # run so its digest change is a planned mutation
+                for pi, p in enumerate(
+                    c for c in list(doc.root) if c.tag == _P
+                ):
+                    if p.find(f".//{_SECPR}") is None:
+                        continue
+                    touched_para[id(p)] = (p, _stripped_digest(p))
+                    touched_body_paths.add(f"{sec_label}/body/p[{pi}]")
+                    para_runs_before[id(p)] = {
+                        ri: (_el_digest(r), _direct_text(r))
+                        for ri, r in enumerate(p.findall(_RUN))
+                    }
+                    for ri, r in enumerate(p.findall(_RUN)):
+                        if r.find(f".//{_SECPR}") is not None:
+                            para_runs_allowed.setdefault(id(p), set()).add(ri)
+                    break
+        for part in sorted(mp_new_parts):
+            pid = part.rsplit("/", 1)[-1][:-4]
+            entries[_HPF_NAME] = _inject_hpf_item_xml(
+                entries[_HPF_NAME], pid, part
+            )
+    # write mutated masterpage parts back under their current names
+    for orig, doc in part_docs.items():
+        entries[f"Contents/{part_current[orig]}"] = doc.decl + ET.tostring(
+            doc.root, encoding="utf-8"
+        )
 
     # --- invariants: 허용 mask 밖 diff 0 (digest-multiset comparison) -------------
     report = InvariantReport(
@@ -576,7 +751,7 @@ def apply_plan(
         added_paths=added,
     )
     _verify_invariants(
-        docs=docs,
+        docs={**docs, **part_docs},
         before=before,
         before_body=before_body,
         touched_anc=touched_anc,
@@ -590,6 +765,7 @@ def apply_plan(
         touched_body_paths=touched_body_paths,
         removed_child_digest=removed_child_digest,
         added_controls=added_controls,
+        allowed_new_body_paths=allowed_new_body_paths,
         touched=touched,
         report=report,
     )
@@ -609,6 +785,23 @@ def apply_plan(
             report.violations.append(
                 "unexpected borderFill add/remove in header.xml"
             )
+    if wm_ops:
+        # masterpage parts contract: every pre-existing part that was never
+        # loaded for mutation is byte-identical; mutated parts are verified
+        # element-wise by _verify_invariants; the only new parts are the
+        # ones this run created.
+        after_names = set(_masterpage_names(entries))
+        expected = set(mp_before_digest) | mp_new_parts
+        if after_names != expected:
+            report.violations.append(
+                "masterpage part set changed outside plan"
+            )
+        for name, dg in mp_before_digest.items():
+            if name.rsplit("/", 1)[-1] in part_docs:
+                continue  # mutated — verified element-wise above
+            data = entries.get(name)
+            if data is None or hashlib.sha256(data).hexdigest() != dg:
+                report.violations.append(f"{name} changed outside plan")
     report.controls_after = sum(
         len(list(_inventory(d))) for d in docs.values()
     )
@@ -695,11 +888,19 @@ def _stripped_text(p: ET.Element) -> str:
 
 
 def _body_inventory(doc: _Doc) -> dict[str, tuple[str, str]]:
-    """path -> (stripped_digest, stripped_text) for direct body paragraphs."""
+    """path -> (stripped_digest, stripped_text) for direct body paragraphs —
+    plus root-level subList paragraphs for masterpage-part docs."""
     inv: dict[str, tuple[str, str]] = {}
     paras = [c for c in list(doc.root) if c.tag == _P]
     for pi, p in enumerate(paras):
         inv[f"{doc.name}/body/p[{pi}]"] = (_stripped_digest(p), _stripped_text(p))
+    sub = doc.root.find(_SUBLIST)
+    if sub is not None:
+        for pi, p in enumerate(sub.findall(_P)):
+            inv[f"{doc.name}/sublist/p[{pi}]"] = (
+                _stripped_digest(p),
+                _stripped_text(p),
+            )
     return inv
 
 
@@ -724,6 +925,7 @@ def _verify_invariants(
     touched_body_paths: set[str],
     removed_child_digest: set[str],
     added_controls: list[ET.Element],
+    allowed_new_body_paths: set[str],
     touched: set[str],
     report: InvariantReport,
 ) -> None:
@@ -790,7 +992,10 @@ def _verify_invariants(
         for path, (dg, _t) in after_body.items():
             old = before_body.get(path)
             if old is None:
-                report.violations.append(f"unexpected new body paragraph {path}")
+                if path not in allowed_new_body_paths:
+                    report.violations.append(
+                        f"unexpected new body paragraph {path}"
+                    )
                 continue
             if dg != old[0] and path not in touched_body_paths:
                 report.violations.append(f"body paragraph changed outside plan: {path}")

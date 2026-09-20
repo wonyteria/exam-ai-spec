@@ -118,7 +118,9 @@ def footer_xml(
     )
 
 
-def masterpage_xml(title: str = "", with_watermark: bool = False, page_field: bool = False) -> str:
+def _masterpage_paras(
+    title: str = "", with_watermark: bool = False, page_field: bool = False
+) -> str:
     paras = ""
     if with_watermark:
         paras += (
@@ -145,7 +147,27 @@ def masterpage_xml(title: str = "", with_watermark: bool = False, page_field: bo
         )
     if title:
         paras += _p(title)
-    return f"<hp:masterPage>{_sublist(paras)}</hp:masterPage>"
+    return paras
+
+
+def masterpage_xml(title: str = "", with_watermark: bool = False, page_field: bool = False) -> str:
+    """Inline ctrl payload — synthetic census shape (real Hancom files use
+    separate package parts instead; see masterpage_part_xml)."""
+    return f"<hp:masterPage>{_sublist(_masterpage_paras(title, with_watermark, page_field))}</hp:masterPage>"
+
+
+def masterpage_part_xml(
+    title: str = "", with_watermark: bool = False, page_field: bool = False
+) -> str:
+    """A real standalone 바탕쪽 package part — un-namespaced <masterPage>
+    root wrapping hp:subList, exactly as Hancom serializes it into
+    Contents/masterpageN.xml."""
+    return (
+        f'{_DECL}<masterPage {_NS} id="masterpage0" type="BOTH" '
+        'pageNumber="0" pageDuplicate="0" pageFront="0">'
+        + _sublist(_masterpage_paras(title, with_watermark, page_field))
+        + "</masterPage>"
+    )
 
 
 def pagenum_ctrl() -> str:
@@ -161,18 +183,23 @@ def section_xml(
     controls: list[str],
     body_paras: list[str],
     raw_body: list[str] | None = None,
+    master_refs: list[str] | None = None,
 ) -> str:
     first_run = "".join(_ctrl(c) for c in controls)
+    refs = master_refs or []
+    # real linkage: <hp:masterPage idRef="..."/> children inside secPr —
+    # masterPageCnt is their count
+    mp_children = "".join(f'<hp:masterPage idRef="{r}"/>' for r in refs)
     secpr = (
         '<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" '
-        'tabStop="8000" masterPageCnt="1"><hp:grid lineGrid="0" charGrid="0"/>'
+        f'tabStop="8000" masterPageCnt="{len(refs)}"><hp:grid lineGrid="0" charGrid="0"/>'
         '<hp:startNum pageStartsOn="BOTH" page="0" pic="0" tbl="0" equation="0"/>'
         '<hp:visibility hideFirstHeader="0" hideFirstFooter="0" '
         'hideFirstMasterPage="0" border="SHOW_ALL" fill="SHOW_ALL"/>'
         '<hp:pagePr landscape="WIDELY" width="59528" height="84186" '
         'gutterType="LEFT_ONLY"><hp:margin header="4252" footer="4252" '
         'gutter="0" left="8504" right="8504" top="5668" bottom="4252"/>'
-        "</hp:pagePr></hp:secPr>"
+        f"</hp:pagePr>{mp_children}</hp:secPr>"
     )
     first = (
         '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" '
@@ -218,18 +245,28 @@ def build_hwpx(
     sections: list[str],
     settings: str = _SETTINGS,
     extra_files: dict[str, bytes] | None = None,
+    masterpages: list[str] | None = None,
 ) -> bytes:
+    hpf = _CONTENT_HPF
+    for i in range(len(masterpages or [])):
+        hpf = hpf.replace(
+            "</opf:manifest>",
+            f'<opf:item id="masterpage{i}" href="Contents/masterpage{i}.xml" '
+            'media-type="application/xml"/></opf:manifest>',
+        )
     files = {
         "mimetype": b"application/hwp+zip",
         "version.xml": _VERSION.encode(),
         "settings.xml": settings.encode(),
         "META-INF/container.xml": _CONTAINER.encode(),
         "META-INF/manifest.xml": _MANIFEST.encode(),
-        "Contents/content.hpf": _CONTENT_HPF.encode(),
+        "Contents/content.hpf": hpf.encode(),
         "Contents/header.xml": _HEADER.encode(),
     }
     for i, sec in enumerate(sections):
         files[f"Contents/section{i}.xml"] = sec.encode()
+    for i, mp in enumerate(masterpages or []):
+        files[f"Contents/masterpage{i}.xml"] = mp.encode()
     for name, data in (extra_files or {}).items():
         files[name] = data
     buf = io.BytesIO()
@@ -266,46 +303,58 @@ def fixture_five_mechanisms() -> bytes:
         controls=[
             header_xml("다른학원 수학", apply="BOTH"),
             footer_xml("연락처", apply="BOTH", with_page_field=True, literal_number="3"),
-            masterpage_xml(title="", with_watermark=False, page_field=True),
             pagenum_ctrl(),
         ],
         body_paras=["시험 본문"],
+        master_refs=["masterpage0"],
     )
-    return build_hwpx([sec])
+    return build_hwpx(
+        [sec], masterpages=[masterpage_part_xml(page_field=True)]
+    )
 
 
 def fixture_master_title_variants() -> bytes:
     """Master-page title + odd/even/first header variants + existing
-    watermark picture on the master page."""
+    watermark picture on the master page (a real 바탕쪽 package part)."""
     sec = section_xml(
         controls=[
             header_xml("세움학원", apply="FIRST"),
             header_xml("세움학원 홀수", apply="ODD"),
             header_xml("세움학원 짝수", apply="EVEN"),
-            masterpage_xml(title="세움학원 바탕쪽", with_watermark=True),
         ],
         body_paras=["본문 1", "본문 2"],
+        master_refs=["masterpage0"],
     )
-    return build_hwpx([sec], settings=_SETTINGS_CLEAN)
+    return build_hwpx(
+        [sec],
+        settings=_SETTINGS_CLEAN,
+        masterpages=[masterpage_part_xml("세움학원 바탕쪽", with_watermark=True)],
+    )
 
 
 def fixture_multi_section() -> bytes:
-    """Three sections with different headers — watermark must land in all."""
+    """Three sections — section 2 owns a real master-page part; the
+    watermark must cover all three."""
     secs = [
         section_xml(
             controls=[header_xml("A학원 1부"), footer_xml("A", with_page_field=True)],
             body_paras=["섹션1 본문"],
         ),
         section_xml(
-            controls=[header_xml("A학원 2부"), masterpage_xml(title="")],
+            controls=[header_xml("A학원 2부")],
             body_paras=["섹션2 본문"],
+            master_refs=["masterpage0"],
         ),
         section_xml(
             controls=[header_xml("A학원 3부")],
             body_paras=["섹션3 본문"],
         ),
     ]
-    return build_hwpx(secs, settings=_SETTINGS_CLEAN)
+    return build_hwpx(
+        secs,
+        settings=_SETTINGS_CLEAN,
+        masterpages=[masterpage_part_xml()],
+    )
 
 
 def fixture_body_top_title() -> bytes:

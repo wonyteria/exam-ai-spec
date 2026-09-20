@@ -81,25 +81,54 @@ def _approve_security_dialog(hwnd: int) -> bool:
 
 
 def _security_dialog_watchdog(
-    hwp_before: set[int], stop: threading.Event, state: dict
+    hwp_before: set[int],
+    stop: threading.Event,
+    state: dict,
+    title_markers: tuple = (),
 ) -> None:
     """While a COM call is in flight, approve Hancom's per-process
-    file-access consent dialogs on PIDs this operation spawned. Each
-    approval is counted in `state` for honest proof reporting."""
-    from rebranding.hwp_worker_operation import hwp_process_inventory
+    file-access consent dialogs — but only on PIDs confirmed COM-spawned
+    (a user's GUI-launched editor is never signalled). PIDs owning a
+    window titled with our uuid input name are recorded in
+    state["own_pids"] so the sweep kills only instances it can prove
+    are ours. Each approval is counted for honest proof reporting."""
+    from rebranding.hwp_worker_operation import (
+        hwp_command_lines,
+        hwp_process_inventory,
+        hwp_window_pids,
+        is_com_spawned,
+    )
 
     seen: set[int] = set()
+    com_cache: dict[int, bool] = {}
+    own: set[int] = set(state.get("own_pids") or ())
     while not stop.is_set():
         spawned = hwp_process_inventory() - hwp_before
-        for hwnd in _hwp_security_dialogs(spawned):
-            if hwnd in seen:
-                continue
-            if _approve_security_dialog(hwnd):
-                seen.add(hwnd)
-                state["security_dialogs_approved"] = (
-                    state.get("security_dialogs_approved", 0) + 1
-                )
+        own |= hwp_window_pids(title_markers) & spawned
+        dialogs = _hwp_security_dialogs(spawned)
+        if dialogs:
+            cmdlines = hwp_command_lines()
+            for hwnd in dialogs:
+                if hwnd in seen:
+                    continue
+                try:
+                    import win32process
+
+                    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                except Exception:
+                    pid = 0
+                if pid and pid not in com_cache:
+                    com_cache[pid] = is_com_spawned(cmdlines.get(pid, ""))
+                # never post approval to a GUI-launched editor's dialog
+                if pid and not com_cache.get(pid, False):
+                    continue
+                if _approve_security_dialog(hwnd):
+                    seen.add(hwnd)
+                    state["security_dialogs_approved"] = (
+                        state.get("security_dialogs_approved", 0) + 1
+                    )
         stop.wait(0.5)
+    state["own_pids"] = sorted(own)
 
 
 class WindowsHWPWorker:
@@ -199,17 +228,20 @@ class WindowsHWPWorker:
             started = time.time()
             spawned_report: dict = {"spawned": [], "killed": [], "leak": 0}
             hwp_before = hwp_process_inventory()
+            iso_in = root / f"in-{uuid.uuid4().hex}.hwpx"
+            iso_hwp = root / "out.hwp"
+            iso_pdf = root / "out.pdf"
+            # the uuid input name appears in the document window title —
+            # it is the ownership marker the watchdog/sweep pin our PID by
+            markers = (iso_in.stem,)
             watchdog_state: dict = {}
             watchdog_stop = threading.Event()
             watchdog = threading.Thread(
                 target=_security_dialog_watchdog,
-                args=(hwp_before, watchdog_stop, watchdog_state),
+                args=(hwp_before, watchdog_stop, watchdog_state, markers),
                 daemon=True,
             )
             try:
-                iso_in = root / f"in-{uuid.uuid4().hex}.hwpx"
-                iso_hwp = root / "out.hwp"
-                iso_pdf = root / "out.pdf"
                 shutil.copy2(hwpx_path, iso_in)
                 q: mp.Queue = mp.Queue()
                 proc = mp.Process(
@@ -225,7 +257,12 @@ class WindowsHWPWorker:
                 if timed_out:
                     proc.terminate()
                     proc.join(timeout=5)
-                    spawned_report = sweep_spawned_hwp(hwp_before, grace_s=0)
+                    spawned_report = sweep_spawned_hwp(
+                        hwp_before,
+                        grace_s=0,
+                        own_pids=watchdog_state.get("own_pids", ()),
+                        title_markers=markers,
+                    )
                     raise TimeoutError(
                         f"HWP roundtrip timeout after {self.timeout_seconds}s"
                     )
@@ -244,7 +281,11 @@ class WindowsHWPWorker:
                     "HWP_ACTUAL_REOPEN": "PASSED",
                     "ARTIFACT_HASH_BINDING": "PASSED",
                 }
-                spawned_report = sweep_spawned_hwp(hwp_before)
+                spawned_report = sweep_spawned_hwp(
+                    hwp_before,
+                    own_pids=watchdog_state.get("own_pids", ()),
+                    title_markers=markers,
+                )
                 spawned_report.update(watchdog_state)
                 return {
                     "checks": checks,
@@ -344,16 +385,17 @@ class WindowsHWPWorker:
             started = time.time()
             spawned_report: dict = {"spawned": [], "killed": [], "leak": 0}
             hwp_before = hwp_process_inventory()
+            iso_in = root / f"in-{uuid.uuid4().hex}{in_path.suffix}"
+            iso_out = root / "scan.hwpx"
+            markers = (iso_in.stem,)
             watchdog_state: dict = {}
             watchdog_stop = threading.Event()
             watchdog = threading.Thread(
                 target=_security_dialog_watchdog,
-                args=(hwp_before, watchdog_stop, watchdog_state),
+                args=(hwp_before, watchdog_stop, watchdog_state, markers),
                 daemon=True,
             )
             try:
-                iso_in = root / f"in-{uuid.uuid4().hex}{in_path.suffix}"
-                iso_out = root / "scan.hwpx"
                 shutil.copy2(in_path, iso_in)
                 q: mp.Queue = mp.Queue()
                 proc = mp.Process(
@@ -368,7 +410,12 @@ class WindowsHWPWorker:
                 if proc.is_alive():
                     proc.terminate()
                     proc.join(timeout=5)
-                    spawned_report = sweep_spawned_hwp(hwp_before, grace_s=0)
+                    spawned_report = sweep_spawned_hwp(
+                        hwp_before,
+                        grace_s=0,
+                        own_pids=watchdog_state.get("own_pids", ()),
+                        title_markers=markers,
+                    )
                     raise TimeoutError(
                         f"HWP->HWPX conversion timeout after {self.timeout_seconds}s"
                     )
@@ -379,7 +426,11 @@ class WindowsHWPWorker:
                     raise RuntimeError("SaveAs HWPX output missing")
                 out_hwpx.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(iso_out, out_hwpx)
-                spawned_report = sweep_spawned_hwp(hwp_before)
+                spawned_report = sweep_spawned_hwp(
+                    hwp_before,
+                    own_pids=watchdog_state.get("own_pids", ()),
+                    title_markers=markers,
+                )
                 spawned_report.update(watchdog_state)
                 return {
                     "ok": True,

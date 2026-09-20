@@ -11,14 +11,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-PDF_2PAGE = (
-    b"%PDF-1.4\n"
-    b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
-    b"2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >> endobj\n"
-    b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n"
-    b"4 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n"
-    b"trailer << /Root 1 0 R >>\n%%EOF"
-)
+from tests.pdf_fixtures import PDF_2PAGE
 
 
 def _png(w=32, h=32, color="white", exif_orientation=None) -> bytes:

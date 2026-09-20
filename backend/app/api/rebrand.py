@@ -281,7 +281,7 @@ class RebrandApplyRequest(BaseModel):
     remove_page_numbers: bool = True
     title_policy: str = "USER_CONFIRMED"
     watermark_enabled: bool = True
-    watermark_opacity: float = 0.10
+    watermark_opacity: float = 0.30
     watermark_scale: float = 0.35
     watermark_replace_existing: bool = False
     logo_sha256: str = ""

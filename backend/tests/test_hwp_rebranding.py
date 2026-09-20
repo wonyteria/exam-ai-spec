@@ -242,10 +242,10 @@ def test_mutate_watermark_merges_into_existing_master():
     req.watermark.replace_existing = True
     out, rep = _run(data, m, req)
     assert rep.passed is True
-    root = _section_root(out)
+    # the watermark para is APPENDED into the real 바탕쪽 package part —
+    # the existing watermark pic must survive alongside the new logo pic
+    root = _section_root(out, "masterpage0.xml")
     pics = list(root.iter(f"{{{HP}}}pic"))
-    # original watermark pic + newly merged watermark pic — real HWPML
-    # resolves pictures via hc:img/@binaryItemIDRef; legacy src still honored
     wm_refs = []
     for p in pics:
         for img in (p.find(f"{{{HC}}}img"), p.find(f"{{{HP}}}img")):
@@ -253,6 +253,7 @@ def test_mutate_watermark_merges_into_existing_master():
                 wm_refs.append(img.get("binaryItemIDRef") or img.get("src"))
     assert any(s == "BinData/wm.png" for s in wm_refs)   # existing kept
     assert any(s == "rebrand_logo" for s in wm_refs)      # merged in
+    assert any("masterpage0.xml" in p for p in rep.added_paths)
 
 
 def test_mutate_watermark_created_when_no_master():
@@ -261,11 +262,19 @@ def test_mutate_watermark_created_when_no_master():
     ids = [c.id for c in m.candidates]
     out, rep = _run(data, m, _req(m, ids=ids))
     assert rep.passed is True
-    # no per-page host -> a real hp:header ctrl is created (a fabricated
-    # hp:masterPage is invalid HWPML and crashes real Hancom)
-    assert "<hp:header" in _section_text(out)
-    assert "<hp:masterPage" not in _section_text(out)
-    assert any(p.startswith("section0.xml/header") for p in rep.added_paths)
+    zf = zipfile.ZipFile(io.BytesIO(out))
+    # no per-page host -> a real Contents/masterpage0.xml package part is
+    # created (inline hp:masterPage fabrications crash real Hancom)
+    assert "Contents/masterpage0.xml" in zf.namelist()
+    part = zf.read("Contents/masterpage0.xml").decode("utf-8")
+    assert "<masterPage" in part and "rebrand_logo" in part
+    hpf = zf.read("Contents/content.hpf").decode("utf-8")
+    assert 'href="Contents/masterpage0.xml"' in hpf
+    assert 'masterPageCnt="1"' in _section_text(out)
+    # the real linkage: secPr gains an idRef child pointing at the part —
+    # a fabricated inline masterPage ctrl would crash real Hancom
+    assert '<hp:masterPage idRef="masterpage0"' in _section_text(out)
+    assert any("masterpage0.xml" in p for p in rep.added_paths)
 
 
 def test_mutate_table_cell_title_only_cell_changes():
@@ -524,6 +533,108 @@ def test_sweep_with_no_spawned_pids_reports_zero_leak():
     assert isinstance(report["spawned"], list)
 
 
+def _fake_inventory(monkeypatch, running: set[int]):
+    """Script the process/table queries so the sweep can be exercised
+    without real Hancom — the ownership rules are what we test."""
+    import rebranding.hwp_worker_operation as mod
+
+    state = {"running": set(running)}
+    monkeypatch.setattr(mod, "hwp_process_inventory", lambda: set(state["running"]))
+    killed: list[int] = []
+
+    def fake_kill(pids):
+        pids = set(pids)
+        killed.extend(sorted(pids))
+        state["running"] -= pids
+        return sorted(pids)
+
+    monkeypatch.setattr(mod, "kill_hwp_processes", fake_kill)
+    return mod, state, killed
+
+
+def test_sweep_never_kills_foreign_gui_hwp(monkeypatch):
+    """A Hancom editor a *user* launches while our op runs is a spawned
+    PID in a naive diff — it must be preserved, never taskkilled."""
+    mod, state, killed = _fake_inventory(monkeypatch, {100, 200, 300})
+    monkeypatch.setattr(
+        mod,
+        "hwp_command_lines",
+        lambda: {
+            100: r'"C:\Hnc\Hwp.exe" "C:\Users\u\doc.hwp"',
+            200: r'"C:\Hnc\Hwp.exe" -Embedding',
+            300: r'"C:\Hnc\Hwp.exe" "C:\Users\u\other.hwp"',
+        },
+    )
+    monkeypatch.setattr(mod, "hwp_window_pids", lambda markers: {200})
+
+    rep = sweep_spawned_hwp({100}, grace_s=0, title_markers=["in-abc123"])
+    assert killed == [200]
+    assert rep["own"] == [200]
+    assert rep["foreign_preserved"] == [300]
+    assert rep["unresolved"] == []
+    assert rep["leak"] == 0
+    assert state["running"] == {100, 300}
+
+
+def test_sweep_preserves_unconfirmed_com_instance(monkeypatch):
+    """Another worker job's COM instance (no marker window) is reported
+    unresolved and left running — we never guess ownership."""
+    mod, state, killed = _fake_inventory(monkeypatch, {100, 200, 400})
+    monkeypatch.setattr(
+        mod,
+        "hwp_command_lines",
+        lambda: {200: '"Hwp.exe" -Embedding', 400: '"Hwp.exe" -Embedding'},
+    )
+    monkeypatch.setattr(mod, "hwp_window_pids", lambda markers: {200})
+
+    rep = sweep_spawned_hwp({100}, grace_s=0, title_markers=["in-xyz"])
+    assert killed == [200]
+    assert rep["unresolved"] == [400]
+    assert rep["foreign_preserved"] == []
+    assert state["running"] == {100, 400}  # the other job's instance survives
+
+
+def test_sweep_kills_nothing_when_cmdline_unavailable(monkeypatch):
+    """If we can't even read command lines, spawned PIDs are unconfirmed —
+    kill only marker-pinned own instances, preserve everything else."""
+    mod, state, killed = _fake_inventory(monkeypatch, {100, 200, 500})
+    monkeypatch.setattr(mod, "hwp_command_lines", lambda: {})
+    monkeypatch.setattr(mod, "hwp_window_pids", lambda markers: {200})
+
+    rep = sweep_spawned_hwp({100}, grace_s=0, title_markers=["in-uuid9"])
+    assert killed == [200]
+    assert rep["foreign_preserved"] == [500]
+    assert state["running"] == {100, 500}
+
+
+def test_sweep_reports_leak_only_for_own_instances(monkeypatch):
+    """A confirmed-own instance that survives taskkill is the leak count;
+    foreign processes still running are not our leak."""
+    mod, state, _killed = _fake_inventory(monkeypatch, {100, 200, 300})
+    # kill attempt fails silently (process still running)
+    monkeypatch.setattr(mod, "kill_hwp_processes", lambda pids: [])
+    monkeypatch.setattr(
+        mod, "hwp_command_lines",
+        lambda: {200: '"Hwp.exe" -Embedding', 300: '"Hwp.exe"'},
+    )
+    monkeypatch.setattr(mod, "hwp_window_pids", lambda markers: {200})
+
+    rep = sweep_spawned_hwp({100}, grace_s=0, title_markers=["in-zzz"])
+    assert rep["leak"] == 1
+    assert rep["leak_pids"] == [200]
+    assert rep["foreign_preserved"] == [300]
+
+
+def test_is_com_spawned_discriminates():
+    from rebranding.hwp_worker_operation import is_com_spawned
+
+    assert is_com_spawned(r'"C:\Program Files\Hnc\Hwp110\Hwp.exe" -Embedding')
+    assert is_com_spawned(r'"Hwp.exe" /Automation')
+    assert not is_com_spawned(r'"C:\Hnc\Hwp.exe" "D:\docs\exam.hwp"')
+    assert not is_com_spawned(r'"C:\Hnc\Hwp.exe"')
+    assert not is_com_spawned("")
+
+
 # --- proof manifest -------------------------------------------------------------------
 
 
@@ -755,14 +866,7 @@ def test_api_candidates_deterministic_ids(env):
 
 # --- page role (AT-061) ----------------------------------------------------------------
 
-_PDF_2PAGE = (
-    b"%PDF-1.4\n"
-    b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
-    b"2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >> endobj\n"
-    b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n"
-    b"4 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n"
-    b"trailer << /Root 1 0 R >>\n%%EOF"
-)
+from tests.pdf_fixtures import PDF_2PAGE as _PDF_2PAGE
 
 
 def test_page_role_confirm_and_manifest_visibility(env):

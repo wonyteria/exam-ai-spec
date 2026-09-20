@@ -28,6 +28,7 @@ OPF = "http://www.idpf.org/2007/opf"
 _NS = {"hp": HP, "hs": HS, "opf": OPF}
 
 _SECTION_RE = re.compile(r"^Contents/section(\d+)\.xml$")
+_MASTERPAGE_RE = re.compile(r"^Contents/masterpage(\d+)\.xml$")
 _PAGE_NUM_TEXT_RE = re.compile(r"^\s*[-–—\[\(]?\s*\d+\s*[-–—\]\)]?\s*$")
 _PRINT_TOKEN_RE = re.compile(r"\^[pPnN]")
 
@@ -478,6 +479,32 @@ def scan_hwpx(data: bytes, source_name: str = "") -> BrandStructureManifest:
                                 digest=_b_dg,
                             )
                         )
+
+    # real 바탕쪽 package parts (Contents/masterpageN.xml) — linked to a
+    # section via <hp:masterPage idRef="masterpageN"/> children inside its
+    # hp:secPr. Census every part's content so master-page titles, existing
+    # watermarks and page-number fields are disclosed instead of silently
+    # skipped. Candidate `section` is the part label so the mutator
+    # resolves paths inside the part itself.
+    for part in sorted(
+        (n for n in names if _MASTERPAGE_RE.match(n)),
+        key=lambda n: int(_MASTERPAGE_RE.match(n).group(1)),  # type: ignore[union-attr]
+    ):
+        part_label = part.rsplit("/", 1)[-1]
+        try:
+            mp_root = ET.fromstring(zf.read(part))
+        except ET.ParseError:
+            flags.corrupt_or_unreadable = True
+            continue
+        manifest.master_page_count += 1
+        _inventory_master(
+            manifest,
+            mp_root,
+            part_label,
+            part_label,
+            _el_digest(mp_root),
+            fill_images,
+        )
 
     # print-only header/footer tokens (settings.xml)
     if "settings.xml" in names:

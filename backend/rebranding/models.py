@@ -137,7 +137,7 @@ class TitlePolicy(str, Enum):
 
 class WatermarkSpec(BaseModel):
     enabled: bool = True
-    opacity: float = 0.10              # spec §7: 8–12% default band
+    opacity: float = 0.30              # alpha≈76 — measured: 0.10 renders invisible on scan-real logos
     scale: float = 0.35                # fraction of page width, 0.30–0.40
     rotation: int = 0
     pages: str = "ALL"
