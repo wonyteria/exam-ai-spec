@@ -119,6 +119,23 @@ def _execute(
         )
         service.run_checks(rev.id, providers=ctx.providers)
 
+        # Register rendered outputs as canonical artifacts bound to this
+        # revision — proof decides FINAL eligibility; nothing unverified
+        # is ever promotable (fail-closed by design).
+        try:
+            from jobs.artifact_bridge import register_pipeline_artifacts
+
+            arts = register_pipeline_artifacts(
+                service, objects, store, ctx, job, rev
+            )
+            sink(
+                "artifacts",
+                f"산출물 등록: {len(arts)}건 "
+                f"({', '.join(a.format for a in arts) or '없음'})",
+            )
+        except Exception as exc:  # noqa: BLE001
+            sink("artifacts", f"산출물 등록 실패: {exc}", "warn")
+
         needs_review = any(
             atu.status
             in (

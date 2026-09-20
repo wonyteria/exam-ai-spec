@@ -129,16 +129,15 @@ def equation_scripts(hwpx_path: Path) -> list[str]:
     return _hwpx_scripts(hwpx_path)
 
 
-def _pdf_text_mismatches(pdf_path: Path, document) -> int:
-    """Rendered-PDF text check — catches content lost between parse and
-    render even when the XML itself is complete."""
+def pdf_text(pdf_path: Path) -> str | None:
+    """Extracted text of a rendered PDF, or None when unavailable."""
     if not pdf_path.exists():
-        return len(document.questions)  # render missing = everything absent
+        return None
     try:
         import pypdfium2 as pdfium
-    except ImportError:
-        return 0  # cannot check without a rasterizer — stay honest, not counted
-    pdf = pdfium.PdfDocument(str(pdf_path))
+        pdf = pdfium.PdfDocument(str(pdf_path))
+    except Exception:
+        return None
     blob = ""
     for i in range(len(pdf)):
         page = pdf[i]
@@ -147,6 +146,17 @@ def _pdf_text_mismatches(pdf_path: Path, document) -> int:
             blob += tp.get_text_range() or ""
         finally:
             page.close()
+    return blob
+
+
+def _pdf_text_mismatches(pdf_path: Path, document) -> int:
+    """Rendered-PDF text check — catches content lost between parse and
+    render even when the XML itself is complete."""
+    if not pdf_path.exists():
+        return len(document.questions)  # render missing = everything absent
+    blob = pdf_text(pdf_path)
+    if blob is None:
+        return 0  # cannot check without a rasterizer — stay honest, not counted
     norm_blob = _norm(blob)
     miss = 0
     for q in document.questions:
