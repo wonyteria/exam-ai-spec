@@ -59,3 +59,4 @@ AT-057,관측·회계,REQ-21;REQ-24;REQ-26,P0,NOT_RUN,,,,,,,I+E+L: call·reserva
 AT-058,성능·모델 평가,REQ-10;REQ-11;REQ-21;REQ-27,P0,NOT_RUN,,,,,,,H+I+L: 평가표·실행manifest,,,
 AT-059,CI 회귀,REQ-25;REQ-27,P0,NOT_RUN,,,,,,,U+I+E: CI log·coverage mapping,,,
 AT-060,출시 인수,REQ-17;REQ-18;REQ-26;REQ-27;REQ-28,P0,NOT_RUN,,,,,,,I+E+W+H+L: 서명된 release checklist,,,
+AT-061,HWP/HWPX 안전 리브랜딩·페이지 역할 매니페스트,REQ-16;REQ-17;REQ-18,P0,PASS,d180b94,python3.12/pytest,local fixtures,F0,,실제 Hancom 왕복 증명 + 역파싱 대조 PASS,E+W: REBRAND_EVIDENCE_REPORT.md,REBRAND_EVIDENCE_REPORT.md,,

@@ -372,6 +372,108 @@ def v1_changes(
     return {"data": {"revision": _revision_out(rev)}, "request_id": _request_id()}
 
 
+class AgentCommandRequest(BaseModel):
+    command: str
+
+
+@router.post("/tenants/{tenant_id}/documents/{doc_id}/agent")
+def v1_agent_propose(
+    tenant_id: str,
+    doc_id: str,
+    req: AgentCommandRequest,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Exam Agent MVP (RESTORE-25): translate a natural-language command
+    into typed ChangeOps + a diff preview. Nothing is applied here —
+    the client reviews the proposal and submits it to /changes with
+    If-Match, which creates a revision (undo/redo stays available)."""
+    from agent.ops import parse_command
+
+    _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+    head = cstore.get_head_revision(doc_id)
+    if head is None:
+        _err(409, "NO_REVISION", "document has no revision")
+    doc = Document.model_validate(head.content_json)
+    proposal = parse_command(doc, req.command)
+    return {
+        "data": {
+            "command": proposal.command,
+            "recognized": proposal.recognized,
+            "explanation": proposal.explanation,
+            "preview": proposal.preview,
+            "ops": [op.model_dump() for op in proposal.ops],
+            "if_match": head.id,
+        },
+        "request_id": _request_id(),
+    }
+
+
+class ComposeRequest(BaseModel):
+    count: Optional[int] = None
+    difficulty_mix: dict[str, int] = {}
+    units: list[str] = []
+    concepts: list[str] = []
+    time_budget_min: Optional[float] = None
+    versions: int = 1
+    seed: Optional[int] = None
+    title: str = ""
+
+
+@router.post("/tenants/{tenant_id}/documents/{doc_id}/compose")
+def v1_compose(
+    tenant_id: str,
+    doc_id: str,
+    req: ComposeRequest,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Exam Composer (RESTORE-28): build A/B/C-style variant exams from
+    this document's question pool. Each version becomes its OWN
+    document + revision — the source document is never mutated, and
+    per-version answer keys reflect the permuted choices."""
+    from composer.engine import ComposeSpec, compose_exam
+
+    ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+    head = cstore.get_head_revision(doc_id)
+    if head is None:
+        _err(409, "NO_REVISION", "document has no revision")
+    doc = Document.model_validate(head.content_json)
+    spec = ComposeSpec(
+        count=req.count,
+        difficulty_mix=req.difficulty_mix,
+        units=req.units,
+        concepts=req.concepts,
+        time_budget_min=req.time_budget_min,
+        versions=max(1, min(req.versions, 5)),
+        seed=req.seed,
+    )
+    result = compose_exam(doc, spec, title=req.title)
+    svc = _service(cstore)
+    out_docs = []
+    for i, new_doc in enumerate(result.exams):
+        new_doc.tenant_id = tenant_id
+        rev = svc.create_revision(
+            new_doc, tenant_id, ctx.user_id, mode=RevisionMode.EDIT,
+            ops_summary=[{"op": "ComposeExam", "source": doc_id,
+                          "version": i}],
+        )
+        out_docs.append({
+            "document_id": new_doc.id,
+            "revision_id": rev.id,
+            "questions": len(new_doc.questions),
+            "answer_key": result.answer_keys[i],
+        })
+    return {
+        "data": {
+            "exams": out_docs,
+            "unfilled": result.unfilled,
+            "total_estimated_minutes": result.total_estimated_minutes,
+        },
+        "request_id": _request_id(),
+    }
+
+
 class UndoRequest(BaseModel):
     restores_revision_id: str
     reason: str = ""

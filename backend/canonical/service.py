@@ -115,6 +115,7 @@ def _style_payload(doc: Document) -> dict:
         "brand_id": doc.brand_id,
         "template_id": doc.template_id,
         "display_metadata": {
+            "title": doc.metadata.title,
             "school": doc.metadata.school,
             "year": doc.metadata.year,
             "semester": doc.metadata.semester,

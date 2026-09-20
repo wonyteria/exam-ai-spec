@@ -347,6 +347,51 @@ class CanonicalStore:
             return None
         return self.get_revision(rec.head_revision_id)
 
+    def set_lifecycle_state(
+        self,
+        doc_id: str,
+        state: LifecycleState,
+        retention_deadline: Optional[float] = None,
+    ) -> None:
+        """Lifecycle transition bumps lifecycle_version — the audit row
+        records when the state actually changed."""
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                """UPDATE documents
+                   SET lifecycle_state=?, lifecycle_version=lifecycle_version+1,
+                       retention_deadline=COALESCE(?, retention_deadline)
+                   WHERE id=?""",
+                (state.value, retention_deadline, doc_id),
+            )
+            if cur.rowcount == 0:
+                raise NotFoundError(f"document {doc_id} not found")
+
+    def list_documents_by_state(
+        self, state: LifecycleState
+    ) -> list[DocumentRecord]:
+        rows = self._conn.execute(
+            "SELECT * FROM documents WHERE lifecycle_state=?",
+            (state.value,),
+        ).fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["lifecycle_state"] = LifecycleState(d["lifecycle_state"])
+            out.append(DocumentRecord(**d))
+        return out
+
+    def purge_revision_payloads(self, doc_id: str) -> int:
+        """PURGED lifecycle: strip content_json from every revision —
+        question content is gone, but the revision hash + audit chain
+        survives so the purge itself is provable."""
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                """UPDATE revisions SET content_json='{}'
+                   WHERE document_id=?""",
+                (doc_id,),
+            )
+            return cur.rowcount
+
     def _cas_head(self, doc_id: str, expected_head: Optional[str], new_head: str) -> None:
         """Compare-and-swap the head pointer. Raises ConflictError on mismatch."""
         if expected_head is None:

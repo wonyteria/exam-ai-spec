@@ -186,3 +186,137 @@ def test_compose_unfillable_reports_shortfall():
     res = compose_exam(pool, spec)
     assert res.unfilled.get("상") == 3
     assert res.exams[0].questions == []
+
+
+# --- agent API endpoint ------------------------------------------------------
+
+
+def _png_bytes() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), "white").save(buf, "PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture()
+def api_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXAMDNA_DATA", str(tmp_path / "data"))
+    import app.deps as deps
+
+    deps.reset()
+    import app.api.uploads as uploads_api
+
+    monkeypatch.setattr(uploads_api, "run_once", lambda *a, **k: False)
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as c:
+        yield c, deps
+    deps.reset()
+
+
+def test_agent_endpoint_proposes_and_changes_applies(api_env):
+    client, deps = api_env
+    h = {"X-Dev-User": "u1"}
+    client.post("/api/auth/dev-login", json={"user_id": "u1", "name": "A"})
+    tid = client.post("/api/tenants", json={"name": "A"}, headers=h).json()["id"]
+    up = client.post(
+        "/api/uploads",
+        files=[("files", ("p1.png", _png_bytes(), "image/png"))],
+        headers=h,
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["document_id"]
+    r = client.post(
+        f"/api/v1/tenants/{tid}/documents/{doc_id}/agent",
+        json={"command": "제목을 '주간 테스트'로 바꿔줘"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["recognized"] is True
+    assert data["ops"][0]["op"] == "SetMetadata"
+    # apply through /changes — revision created
+    r2 = client.post(
+        f"/api/v1/tenants/{tid}/documents/{doc_id}/changes",
+        json={"ops": data["ops"]},
+        headers={**h, "If-Match": data["if_match"]},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["data"]["revision"]["revision_no"] == 2
+
+
+def test_agent_endpoint_unrecognized(api_env):
+    client, deps = api_env
+    h = {"X-Dev-User": "u1"}
+    client.post("/api/auth/dev-login", json={"user_id": "u1", "name": "A"})
+    tid = client.post("/api/tenants", json={"name": "A"}, headers=h).json()["id"]
+    up = client.post(
+        "/api/uploads",
+        files=[("files", ("p1.png", _png_bytes(), "image/png"))],
+        headers=h,
+    )
+    doc_id = up.json()["document_id"]
+    r = client.post(
+        f"/api/v1/tenants/{tid}/documents/{doc_id}/agent",
+        json={"command": "알 수 없는 요청"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["recognized"] is False
+    assert r.json()["data"]["ops"] == []
+
+
+def _seed_questions(cstore, doc_id, n=4):
+    """Attach questions to the stored document via a revision."""
+    head = cstore.get_head_revision(doc_id)
+    doc = Document.model_validate(head.content_json)
+    for i in range(1, n + 1):
+        q = Question(number=i, type=QuestionType.MULTIPLE_CHOICE, points=3)
+        q.body = [TextSpan(text=f"문항 {i}")]
+        q.choices = [
+            Choice(label="①", body=[TextSpan(text="1")]),
+            Choice(label="②", body=[TextSpan(text="2")]),
+        ]
+        q.answer = Answer(value="①")
+        doc.questions.append(q)
+    from canonical.service import MutationService
+
+    svc = MutationService(cstore, deps_get_tenancy())
+    svc.create_revision(doc, doc.tenant_id or "t1", "tester")
+
+
+def deps_get_tenancy():
+    import app.deps as deps
+
+    return deps.get_tenancy()
+
+
+def test_compose_endpoint_creates_versioned_exams(api_env):
+    client, deps = api_env
+    h = {"X-Dev-User": "u1"}
+    client.post("/api/auth/dev-login", json={"user_id": "u1", "name": "A"})
+    tid = client.post("/api/tenants", json={"name": "A"}, headers=h).json()["id"]
+    up = client.post(
+        "/api/uploads",
+        files=[("files", ("p1.png", _png_bytes(), "image/png"))],
+        headers=h,
+    )
+    doc_id = up.json()["document_id"]
+    _seed_questions(deps.get_canonical(), doc_id)
+    r = client.post(
+        f"/api/v1/tenants/{tid}/documents/{doc_id}/compose",
+        json={"versions": 2, "count": 3, "seed": 1, "title": "주간"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert len(data["exams"]) == 2
+    for ex in data["exams"]:
+        assert ex["questions"] == 3
+        assert len(ex["answer_key"]) == 3
+        # each version is a real stored document
+        assert deps.get_canonical().get_document(ex["document_id"])
