@@ -7,27 +7,40 @@ from ..context import PipelineContext
 
 
 def run(ctx: PipelineContext) -> None:
-    """Question segmentation: find question regions on each page."""
+    """Question segmentation: find question regions on each page.
+
+    Pages whose role is ANSWER_KEY (confirmed or raster-suggested) are
+    kept as answer evidence and never scanned for question regions —
+    an answer table is not a problem page (RESTORE-03).
+    """
     questions: list[Question] = []
     ctx.page_extractions = {}  # page index -> [(provider name, item)] for runner
     for page in ctx.document.pages:
+        _classify_page_role(ctx, page)
+        if page.page_role == "ANSWER_KEY":
+            ctx.emit(
+                "segmentation",
+                f"페이지 {page.index + 1}: 정답/배점표 역할 — 문항 분리에서 제외",
+            )
+            continue
         image = ctx.resolve_uri(page.clean_uri or page.original.uri)
         page_questions: list[Question] = []
         for provider in ctx.providers.vision:
             for cand in _region_candidates(provider, image, page.index, ctx):
                 position = len(questions) + len(page_questions) + 1
                 label = str(cand.get("label") or cand.get("number") or position)
+                bbox = _to_pixels(cand.get("bbox"), page.width, page.height)
                 page_questions.append(
                     Question(
                         number=position,
                         label=label,
-                        source=SourceRef(
-                            page=page.index,
-                            bbox=_to_pixels(cand.get("bbox"), page.width, page.height),
-                        ),
+                        source=SourceRef(page=page.index, bbox=bbox),
+                        source_anchor=_anchor(page, bbox),
                     )
                 )
         _extend_regions(page_questions, page)
+        for q in page_questions:
+            _refresh_anchor(page, q)
         questions.extend(page_questions)
     ctx.document.questions = questions
     ctx.emit(
@@ -35,6 +48,50 @@ def run(ctx: PipelineContext) -> None:
         f"{len(questions)}개 문항 영역 분리",
         "info" if questions else "warn",
     )
+
+
+def _anchor(page, bbox):
+    if bbox is None:
+        return None
+    from document.anchors import anchor_for
+
+    return anchor_for(page, bbox, source_sha256=page.sha256 or "")
+
+
+def _refresh_anchor(page, question) -> None:
+    """Re-derive the anchor after `_extend_regions` grows the bbox."""
+    if question.source and question.source.bbox:
+        question.source_anchor = _anchor(page, question.source.bbox)
+
+
+def _classify_page_role(ctx, page) -> None:
+    """Suggest a role for UNKNOWN pages from the raster — never settles it
+    (role_source stays AUTO) and never overrides a confirmed role."""
+    if page.page_role != "UNKNOWN":
+        return
+    uri = page.original.variants.get("grayscale")
+    if not uri:
+        return
+    path = ctx.resolve_uri(uri)
+    if not path.exists():
+        return
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from document.page_roles import suggest_role_from_raster
+
+        gray = np.asarray(Image.open(path).convert("L"))
+    except Exception:
+        return
+    role, evidence = suggest_role_from_raster(gray)
+    if role != "UNKNOWN":
+        page.page_role = role
+        page.role_source = "AUTO"
+        ctx.emit(
+            "segmentation",
+            f"페이지 {page.index + 1}: 역할 후보 {role} ({evidence}) — 사용자 확인 필요",
+        )
 
 
 GAP = 6.0

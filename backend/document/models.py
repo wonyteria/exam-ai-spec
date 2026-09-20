@@ -157,6 +157,9 @@ class Question(BaseModel):
     solution: Optional[Solution] = None
     curriculum: Curriculum = Field(default_factory=Curriculum)
     source: Optional[SourceRef] = None
+    # RESTORE-01/03: provenance — where in the immutable source this
+    # question was detected, plus the transform chain back to source px.
+    source_anchor: Optional[SourceAnchor] = None
     atus: list[ATU] = Field(default_factory=list)
     verification: QuestionVerification = Field(default_factory=QuestionVerification)
 

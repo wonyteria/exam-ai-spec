@@ -37,6 +37,55 @@ def suggest_page_role(text: str, pdf_page_index: int | None, page_count: int) ->
     return "UNKNOWN", "insufficient_markers"
 
 
+# --- raster-based role suggestion ------------------------------------------------
+
+# A printed answer/score sheet is visually a dense ruled table. For
+# image-only pages (no text layer) this heuristic produces a *suggestion*
+# — it never settles the role (role_source stays AUTO).
+_ANSWER_GRID_MIN_HRULES = 12      # long horizontal rules spanning the table
+_ANSWER_GRID_MIN_VRULES = 3       # table column separators
+_RULE_MIN_RUN = 0.55              # contiguous dark run covering >=55% width
+
+
+def suggest_role_from_raster(gray) -> tuple[str, str]:
+    """Classify a rasterized page as an answer-grid candidate by detecting
+    dense long table rules. Conservative: only ANSWER_KEY or UNKNOWN.
+    `gray` is a 2-D numpy array (luminance)."""
+    import numpy as np
+
+    if gray is None or gray.ndim != 2 or gray.size == 0:
+        return "UNKNOWN", "no_raster"
+    h, w = gray.shape
+    dark = gray < 150
+    # Rows whose dark pixels cover a wide contiguous band = table rules.
+    h_rules = 0
+    for row in dark:
+        if _longest_run(row) >= _RULE_MIN_RUN * w:
+            h_rules += 1
+    v_rules = 0
+    for col in dark.T:
+        if _longest_run(col) >= _RULE_MIN_RUN * h:
+            v_rules += 1
+    if h_rules >= _ANSWER_GRID_MIN_HRULES and v_rules >= _ANSWER_GRID_MIN_VRULES:
+        return "ANSWER_KEY", f"raster_grid:h{h_rules}/v{v_rules}"
+    return "UNKNOWN", f"raster_grid:h{h_rules}/v{v_rules}"
+
+
+def _longest_run(row) -> int:
+    """Longest contiguous True run."""
+    import numpy as np
+
+    if not row.any():
+        return 0
+    padded = np.concatenate(([False], row, [False]))
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.nonzero(diff == 1)[0]
+    ends = np.nonzero(diff == -1)[0]
+    if not len(starts):
+        return 0
+    return int((ends - starts).max())
+
+
 def extract_pdf_page_text(pdf_bytes: bytes, page_index: int) -> str:
     """Best-effort text-layer extraction via pypdfium2. Returns '' for
     image-only pages or when the rasterizer is unavailable — the caller
