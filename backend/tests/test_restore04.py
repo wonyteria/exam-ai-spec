@@ -70,7 +70,7 @@ def test_confident_pencil_mark_removed_and_classified(tmp_path):
     assert (restored[mark] == 255).all()
     # per-class mask + overlay recorded as evidence variants
     assert "layer_pencil" in page.original.variants or (
-        "layer_pen" in page.original.variants
+        "layer_black_pen" in page.original.variants
     )
     assert "layer_overlay" in page.original.variants
     assert not page.uncertain_regions
@@ -79,7 +79,7 @@ def test_confident_pencil_mark_removed_and_classified(tmp_path):
 def test_grading_mark_by_chroma_removed(tmp_path):
     gray = np.full((200, 400), 200, dtype=np.uint8)
     rgb = np.stack([gray] * 3, axis=2).copy()
-    tick = _ring(200, 400, (100, 200), 55, 4)
+    tick = _ring(200, 400, (100, 200), 70, 4)
     rgb[tick] = (200, 20, 20)  # red grading circle
     gray[tick] = 110
     page = _run(gray, tmp_path, rgb=rgb)
@@ -88,7 +88,7 @@ def test_grading_mark_by_chroma_removed(tmp_path):
         Image.open(page.original.variants["restored_candidate"]), dtype=np.uint8
     )
     assert (restored[tick] == 255).all()
-    assert "layer_grading" in page.original.variants
+    assert "layer_grading_mark" in page.original.variants
 
 
 def test_overlap_component_preserved_for_review(tmp_path):
@@ -106,7 +106,7 @@ def test_overlap_component_preserved_for_review(tmp_path):
     assert (restored[100, 40:120] == 20).all()  # print untouched
     assert page.uncertain_regions
     assert all(r["policy"] == "REVIEW_REQUIRED" for r in page.uncertain_regions)
-    assert "layer_overlap" in page.original.variants
+    assert "layer_print_writing_overlap" in page.original.variants
 
 
 def test_no_change_outside_approved_mask(tmp_path):

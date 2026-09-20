@@ -5,7 +5,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-from .layers import LayerClass, classify_layers, load_rgb, overlay_image
+from .layers import (
+    LayerClass,
+    REVIEW_CLASSES,
+    classify_layers,
+    load_rgb,
+    overlay_image,
+)
 from ..context import PipelineContext
 
 # Print is near-black; pencil graphite sits between print and the local
@@ -31,14 +37,17 @@ LEGACY_REMOVAL = False
 
 
 def run(ctx: PipelineContext) -> None:
-    """Six-class layer separation (RESTORE-04).
+    """LayerDNA layer separation (RESTORE-04 six-class → RESTORE-11 14-class).
 
-    Every ink pixel gets a class (print/figure/grading/pen/pencil/overlap)
-    with per-component evidence. Only confident, non-overlapping
-    annotation components are whiten-candidates — the restored variant is
-    `restored_candidate`, and overlap/uncertain components are preserved
-    and recorded for review. Per-class masks and a color overlay are
-    written next to the variants so every decision stays inspectable.
+    Every ink pixel gets a class (print text/figure/math, per-ink-color
+    annotation, highlighter, paper artifact, print↔writing/grading
+    overlap, unknown) with per-component evidence. Only confident,
+    non-overlapping annotation components are whiten-candidates — the
+    restored variant is `restored_candidate`, and overlap/unknown
+    components are preserved and recorded for review. Per-class masks
+    and a color overlay are written next to the variants so every
+    decision stays inspectable. Classification is not deletion:
+    PAPER_ARTIFACT and UNKNOWN are preserved by policy.
     """
     import hashlib
 
@@ -87,20 +96,21 @@ def run(ctx: PipelineContext) -> None:
         changed = restored != gray
         assert not (changed & ~mask).any(), "out-of-mask pixel change"
 
-        # OVERLAP / low-confidence components stay untouched and become
-        # review entries (REVIEW_REQUIRED).
+        # Overlap / unknown / low-confidence components stay untouched and
+        # become review entries (REVIEW_REQUIRED).
         review_regions = [
             {
                 "bbox_px": {
                     "x": c.bbox[0], "y": c.bbox[1], "w": c.bbox[2], "h": c.bbox[3],
                 },
+                "layer": c.layer.name,
                 "overlap_pixels": c.overlap_pixels,
                 "confidence": c.confidence,
                 "reason": c.reason,
                 "policy": "REVIEW_REQUIRED",
             }
             for c in evidence.components
-            if c.layer == LayerClass.OVERLAP
+            if c.layer in REVIEW_CLASSES
         ]
         if review_regions:
             page.uncertain_regions = review_regions
@@ -130,7 +140,7 @@ def run(ctx: PipelineContext) -> None:
 
     ctx.emit(
         "student_trace",
-        f"{len(ctx.document.pages)}페이지 6-클래스 분리 — 제거 후보 픽셀 "
+        f"{len(ctx.document.pages)}페이지 14-클래스 분리 — 제거 후보 픽셀 "
         f"{total_removed}, 검수 영역 {total_review}",
         "info" if total_removed or not total_review else "warn",
     )
