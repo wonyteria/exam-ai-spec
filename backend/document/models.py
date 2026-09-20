@@ -81,6 +81,9 @@ class ATU(BaseModel):
     status: VerificationStatus = VerificationStatus.UNVERIFIED
     source: Optional[SourceRef] = None
     note: Optional[str] = None
+    # EvidenceDNA (RESTORE-16): which evidence classes backed this ATU —
+    # {source, observation, consistency, human} counts.
+    evidence: dict[str, int] = Field(default_factory=dict)
 
 
 class TextSpan(BaseModel):

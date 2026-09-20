@@ -9,7 +9,19 @@ from document.models import Page, PageImage, PdfPageInventory, TransformStep
 from .context import PipelineContext
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-_VARIANTS = ("grayscale", "high_contrast", "binarized")
+# RESTORE-15: which recognition task each derived candidate serves.
+# Consumers may route per-region; none replaces the immutable source.
+VARIANT_PURPOSES = {
+    "raster": ("source_render",),
+    "grayscale": ("trace_separation", "review", "ocr"),
+    "high_contrast": ("ocr", "layout"),
+    "binarized": ("layout", "figure_trace"),
+    "deskewed": ("ocr", "layout"),
+    "shadow_free": ("ocr", "math_ocr"),
+    "channel_r": ("layerdna",),
+    "channel_g": ("layerdna",),
+    "channel_b": ("layerdna",),
+}
 PDF_RENDER_SCALE = 200 / 72  # 200 dpi rasterization baseline
 # A page with fewer glyphs than this has a text layer too thin to trust
 # (e.g. a watermark string on a scan) — treated as image-only for
@@ -313,11 +325,89 @@ def _make_variants(
     binarized.save(bin_path)
     variants["binarized"] = str(bin_path)
 
+    # RESTORE-15: additional derived candidates for variant routing.
+    # Every variant is a candidate input — recognition may pick per
+    # region; none of these replaces the source.
+    variants.update(_cv_variants(base, gray, out_dir, stem, page))
+
     if page is not None:
         # Derived bytes are evidence: bind every variant to its hash so a
         # later crop/recognition input is attributable (RESTORE-01).
         for name, p in variants.items():
-            page.original.variant_sha256[name] = hashlib.sha256(
-                Path(p).read_bytes()
-            ).hexdigest()
+            page.original.variant_sha256.setdefault(
+                name, hashlib.sha256(Path(p).read_bytes()).hexdigest()
+            )
+    return variants
+
+
+def _cv_variants(
+    base: Image.Image, gray: Image.Image, out_dir: Path, stem: str,
+    page: Page | None,
+) -> dict[str, str]:
+    """Deskew / shadow-free / per-channel variants via OpenCV. Any failure
+    produces no variant — missing candidates are never fabricated."""
+    variants: dict[str, str] = {}
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return variants
+
+    gray_np = np.asarray(gray, dtype=np.uint8)
+    rgb_np = np.asarray(base, dtype=np.uint8)
+
+    # deskew: estimate skew from the ink projection profile; record the
+    # angle in the transform chain so anchors stay invertible.
+    try:
+        ink = cv2.threshold(gray_np, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        coords = np.column_stack(np.nonzero(ink))
+        angle = 0.0
+        if len(coords) >= 50:
+            rect = cv2.minAreaRect(coords)
+            angle = rect[-1]
+            if angle < -45:
+                angle = 90 + angle
+            if abs(angle) < 0.3 or abs(angle) > 15:
+                angle = 0.0
+        if angle:
+            h, w = gray_np.shape
+            m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+            deskewed = cv2.warpAffine(
+                gray_np, m, (w, h), flags=cv2.INTER_CUBIC,
+                borderValue=255,
+            )
+            p = out_dir / f"{stem}_deskewed.png"
+            Image.fromarray(deskewed, mode="L").save(p)
+            variants["deskewed"] = str(p)
+            if page is not None:
+                page.transform_chain.append(
+                    TransformStep(
+                        kind="deskew",
+                        params={"angle_deg": round(float(angle), 3),
+                                "variant": "deskewed"},
+                    )
+                )
+    except Exception:
+        pass
+
+    # shadow_free: divide by the large-scale background estimate.
+    try:
+        bg = cv2.medianBlur(gray_np, 51)
+        bg = np.clip(bg, 1, 255)
+        flat = np.clip(gray_np.astype(np.float32) / bg * 255, 0, 255)
+        p = out_dir / f"{stem}_shadow_free.png"
+        Image.fromarray(flat.astype(np.uint8), mode="L").save(p)
+        variants["shadow_free"] = str(p)
+    except Exception:
+        pass
+
+    # channel separation: colored annotation ink disappears in the
+    # channel matching its color — per-channel evidence for LayerDNA.
+    try:
+        for i, name in enumerate(("r", "g", "b")):
+            p = out_dir / f"{stem}_channel_{name}.png"
+            Image.fromarray(rgb_np[..., i], mode="L").save(p)
+            variants[f"channel_{name}"] = str(p)
+    except Exception:
+        pass
     return variants

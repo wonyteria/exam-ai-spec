@@ -56,6 +56,14 @@ def _page_extractions(ctx: PipelineContext) -> dict[int, list[tuple[str, dict]]]
         return stashed
     out: dict[int, list[tuple[str, dict]]] = {}
     for page in ctx.document.pages:
+        # Native text layer is a SOURCE-class observer (EvidenceDNA):
+        # DIGITAL/HYBRID pages contribute structured items segmented from
+        # their own text fragments — independent of any OCR provider.
+        native = _native_pdf_items(page)
+        if native:
+            out.setdefault(page.index, []).extend(
+                ("native_pdf", i) for i in native
+            )
         image = ctx.resolve_uri(page.clean_uri or page.original.uri)
         for provider in ctx.providers.vision:
             if not hasattr(provider, "extract_page"):
@@ -66,6 +74,46 @@ def _page_extractions(ctx: PipelineContext) -> dict[int, list[tuple[str, dict]]]
                         (provider.name, i) for i in cand.value if isinstance(i, dict)
                     )
     return out
+
+
+def _native_pdf_items(page) -> list[dict]:
+    """Segment the page's native text fragments into question items.
+
+    Fragment bboxes are PDF-pt space (origin bottom-left) — converted to
+    working-pixel space via the raster scale recorded at render time.
+    Returns [] for SCANNED/UNKNOWN pages or missing geometry."""
+    inv = getattr(page, "inventory", None)
+    if (
+        inv is None
+        or inv.pdf_class not in ("DIGITAL", "HYBRID")
+        or not inv.native_fragments
+        or not inv.width_pt
+        or not inv.height_pt
+        or not page.width
+    ):
+        return []
+    from providers.vision.paddle_page import segment_questions
+
+    scale = page.width / inv.width_pt
+    cands = []
+    for frag in inv.native_fragments:
+        l, b, r, t = frag["bbox_pt"]
+        bbox_px = [
+            l * scale,
+            (inv.height_pt - t) * scale,
+            r * scale,
+            (inv.height_pt - b) * scale,
+        ]
+        cands.append(
+            Candidate(
+                provider="native_pdf",
+                value=frag["text"],
+                confidence=1.0,
+                meta={"bbox_px": bbox_px, "kind": "native_text"},
+            )
+        )
+    items, _ = segment_questions(cands)
+    return items
 
 
 def _label_matches(item_label, question: Question) -> bool:

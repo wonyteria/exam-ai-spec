@@ -62,9 +62,15 @@ def run(ctx: PipelineContext) -> None:
 
 
 def _settle(atu: ATU) -> None:
-    """Apply the independence-aware consensus rules to one ATU."""
+    """Apply the independence-aware consensus rules to one ATU, and
+    record its evidence-class bundle (RESTORE-16) — a summary for
+    review, never a weakening of the independence policy."""
+    from document.evidence import bundle_for
+
     if atu.status == VerificationStatus.HUMAN_VERIFIED:
+        atu.evidence = bundle_for(atu.candidates).model_dump()
         return  # human decisions are never re-litigated by machines
+    atu.evidence = bundle_for(atu.candidates).model_dump()
     if not atu.candidates:
         atu.status = VerificationStatus.UNREADABLE
         return
