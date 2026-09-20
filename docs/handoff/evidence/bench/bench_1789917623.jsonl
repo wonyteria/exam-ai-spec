@@ -1,0 +1,8 @@
+{"family": "golden-001-replay", "provider": "paddleocr", "status": "PASS", "char_exact": 0.19388418998048146, "critical_matched": 142, "critical_total": 172, "critical_exact_rate": 0.8255813953488372, "source_hallucination": 309, "elapsed_s": 340.875, "peak_bytes": 192068907}
+{"family": "golden-001-replay", "provider": "mock", "status": "FAIL", "char_exact": 0.0, "critical_matched": 0, "critical_total": 172, "critical_exact_rate": 0.0, "source_hallucination": 0, "elapsed_s": 0.0, "peak_bytes": 528}
+{"family": "gyenam-2025-imagepdf", "provider": "paddleocr", "status": "REVIEW", "char_exact": null, "critical_matched": 0, "critical_total": 0, "critical_exact_rate": null, "source_hallucination": 1027, "elapsed_s": 1389.515, "peak_bytes": 125615667}
+{"family": "gyenam-2025-imagepdf", "provider": "mock", "status": "REVIEW", "char_exact": null, "critical_matched": 0, "critical_total": 0, "critical_exact_rate": null, "source_hallucination": 0, "elapsed_s": 0.0, "peak_bytes": 528}
+{"family": "jinsu-rebrand-sample", "provider": "paddleocr", "status": "NOT_RUN", "detail": "'jinsu-rebrand-sample has no declared fixture directory'"}
+{"family": "jinsu-rebrand-sample", "provider": "mock", "status": "NOT_RUN", "detail": "'jinsu-rebrand-sample has no declared fixture directory'"}
+{"family": "seum-rebrand-sample", "provider": "paddleocr", "status": "NOT_RUN", "detail": "'seum-rebrand-sample has no declared fixture directory'"}
+{"family": "seum-rebrand-sample", "provider": "mock", "status": "NOT_RUN", "detail": "'seum-rebrand-sample has no declared fixture directory'"}

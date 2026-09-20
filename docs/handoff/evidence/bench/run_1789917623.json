@@ -1,0 +1,135 @@
+{
+  "commit": "a3b6bf2",
+  "benchmark_version": "restore10b-1",
+  "split_hash": "714a6d681c156d3baf2e9a995e82e8fb6995f9050264146c627e7af897c74cb6",
+  "provider_config": "paddleocr,mock",
+  "worker_version": "local",
+  "split": "dev",
+  "declared_items": [
+    "golden-001-replay::paddleocr",
+    "golden-001-replay::mock",
+    "gyenam-2025-imagepdf::paddleocr",
+    "gyenam-2025-imagepdf::mock",
+    "jinsu-rebrand-sample::paddleocr",
+    "jinsu-rebrand-sample::mock",
+    "seum-rebrand-sample::paddleocr",
+    "seum-rebrand-sample::mock"
+  ],
+  "results": {
+    "golden-001-replay::paddleocr": {
+      "status": "PASS",
+      "detail": "{\"family\": \"golden-001-replay\", \"provider\": \"paddleocr\", \"status\": \"PASS\", \"char_exact\": 0.19388418998048146, \"critical_matched\": 142, \"critical_total\": 172, \"critical_exact_rate\": 0.8255813953488372, \"source_hallucination\": 309, \"elapsed_s\": 340.875, \"peak_bytes\": 192068907}",
+      "critical": false
+    },
+    "golden-001-replay::mock": {
+      "status": "FAIL",
+      "detail": "{\"family\": \"golden-001-replay\", \"provider\": \"mock\", \"status\": \"PASS\", \"char_exact\": 0.0, \"critical_matched\": 0, \"critical_total\": 172, \"critical_exact_rate\": 0.0, \"source_hallucination\": 0, \"elapsed_s\": 0.0, \"peak_bytes\": 528}",
+      "critical": false
+    },
+    "gyenam-2025-imagepdf::paddleocr": {
+      "status": "REVIEW",
+      "detail": "{\"family\": \"gyenam-2025-imagepdf\", \"provider\": \"paddleocr\", \"status\": \"PASS\", \"char_exact\": null, \"critical_matched\": 0, \"critical_total\": 0, \"critical_exact_rate\": null, \"source_hallucination\": 1027, \"elapsed_s\": 1389.515, \"peak_bytes\": 125615667}",
+      "critical": false
+    },
+    "gyenam-2025-imagepdf::mock": {
+      "status": "REVIEW",
+      "detail": "{\"family\": \"gyenam-2025-imagepdf\", \"provider\": \"mock\", \"status\": \"PASS\", \"char_exact\": null, \"critical_matched\": 0, \"critical_total\": 0, \"critical_exact_rate\": null, \"source_hallucination\": 0, \"elapsed_s\": 0.0, \"peak_bytes\": 528}",
+      "critical": false
+    },
+    "jinsu-rebrand-sample::paddleocr": {
+      "status": "NOT_RUN",
+      "detail": "'jinsu-rebrand-sample has no declared fixture directory'",
+      "critical": false
+    },
+    "jinsu-rebrand-sample::mock": {
+      "status": "NOT_RUN",
+      "detail": "'jinsu-rebrand-sample has no declared fixture directory'",
+      "critical": false
+    },
+    "seum-rebrand-sample::paddleocr": {
+      "status": "NOT_RUN",
+      "detail": "'seum-rebrand-sample has no declared fixture directory'",
+      "critical": false
+    },
+    "seum-rebrand-sample::mock": {
+      "status": "NOT_RUN",
+      "detail": "'seum-rebrand-sample has no declared fixture directory'",
+      "critical": false
+    }
+  },
+  "limitations": [],
+  "rows": [
+    {
+      "family": "golden-001-replay",
+      "provider": "paddleocr",
+      "status": "PASS",
+      "char_exact": 0.19388418998048146,
+      "critical_matched": 142,
+      "critical_total": 172,
+      "critical_exact_rate": 0.8255813953488372,
+      "source_hallucination": 309,
+      "elapsed_s": 340.875,
+      "peak_bytes": 192068907
+    },
+    {
+      "family": "golden-001-replay",
+      "provider": "mock",
+      "status": "FAIL",
+      "char_exact": 0.0,
+      "critical_matched": 0,
+      "critical_total": 172,
+      "critical_exact_rate": 0.0,
+      "source_hallucination": 0,
+      "elapsed_s": 0.0,
+      "peak_bytes": 528
+    },
+    {
+      "family": "gyenam-2025-imagepdf",
+      "provider": "paddleocr",
+      "status": "REVIEW",
+      "char_exact": null,
+      "critical_matched": 0,
+      "critical_total": 0,
+      "critical_exact_rate": null,
+      "source_hallucination": 1027,
+      "elapsed_s": 1389.515,
+      "peak_bytes": 125615667
+    },
+    {
+      "family": "gyenam-2025-imagepdf",
+      "provider": "mock",
+      "status": "REVIEW",
+      "char_exact": null,
+      "critical_matched": 0,
+      "critical_total": 0,
+      "critical_exact_rate": null,
+      "source_hallucination": 0,
+      "elapsed_s": 0.0,
+      "peak_bytes": 528
+    },
+    {
+      "family": "jinsu-rebrand-sample",
+      "provider": "paddleocr",
+      "status": "NOT_RUN",
+      "detail": "'jinsu-rebrand-sample has no declared fixture directory'"
+    },
+    {
+      "family": "jinsu-rebrand-sample",
+      "provider": "mock",
+      "status": "NOT_RUN",
+      "detail": "'jinsu-rebrand-sample has no declared fixture directory'"
+    },
+    {
+      "family": "seum-rebrand-sample",
+      "provider": "paddleocr",
+      "status": "NOT_RUN",
+      "detail": "'seum-rebrand-sample has no declared fixture directory'"
+    },
+    {
+      "family": "seum-rebrand-sample",
+      "provider": "mock",
+      "status": "NOT_RUN",
+      "detail": "'seum-rebrand-sample has no declared fixture directory'"
+    }
+  ]
+}

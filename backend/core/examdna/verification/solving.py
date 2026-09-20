@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from document.models import Answer, LogicFlag, Solution, TextSpan
 from ..context import PipelineContext
+from ..math.checker import MathVerdict, verify_answer
 
 
 def run(ctx: PipelineContext) -> None:
@@ -72,10 +73,23 @@ def run(ctx: PipelineContext) -> None:
                 LogicFlag(kind="ambiguous_answer", detail=f"풀이 결과 불일치: {answers}")
             )
             continue
-        normalized, matched = _normalize_answer(answers[0], q)
+        normalized, matched, math_verdict = _normalize_answer(answers[0], q)
         q.answer = Answer(value=normalized)
         if steps:
             q.solution = Solution(steps=[TextSpan(text=str(s)) for s in steps])
+        if math_verdict is MathVerdict.MISMATCH:
+            # deterministic refutation — the claimed answer provably
+            # differs from every parseable choice
+            q.verification.logic_flags.append(
+                LogicFlag(
+                    kind="math_check_failed",
+                    detail=(
+                        f"정답 {normalized!r}이 선택지와 기호적으로 "
+                        "불일치(SymPy 증명)"
+                    ),
+                )
+            )
+            continue
         if not matched:
             q.verification.logic_flags.append(
                 LogicFlag(
@@ -130,14 +144,26 @@ def _problem(question, document=None) -> dict:
     return problem
 
 
-def _normalize_answer(raw, question) -> tuple[object, bool]:
-    """Match solver output to a choice label or choice text."""
+def _normalize_answer(raw, question) -> tuple[object, bool, MathVerdict]:
+    """Match solver output to a choice label or choice text.
+
+    String equality is the cheap path; when it fails, the deterministic
+    SymPy checker decides whether the answer is symbolically equivalent
+    to some choice body. The third return value carries the math
+    verdict — UNKNOWN keeps the old ambiguous_answer behavior, MISMATCH
+    is a proven refutation.
+    """
     if not question.choices:
-        return raw, True
+        return raw, True, MathVerdict.UNKNOWN
     for c in question.choices:
         if str(raw).strip() == c.label:
-            return c.label, True
+            return c.label, True, MathVerdict.MATCH
         text = " ".join(s.text for s in c.body).strip()
         if text and text == str(raw).strip():
-            return c.label, True
-    return raw, False
+            return c.label, True, MathVerdict.MATCH
+    check = verify_answer(
+        raw, {c.label: " ".join(s.text for s in c.body) for c in question.choices}
+    )
+    if check.matched_label:
+        return check.matched_label, True, check.verdict
+    return raw, False, check.verdict

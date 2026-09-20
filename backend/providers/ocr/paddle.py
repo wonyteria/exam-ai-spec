@@ -47,7 +47,18 @@ class PaddleOCRProvider:
                 "paddleocr not installed — install paddlepaddle+paddleocr "
                 "or run without EXAMDNA_PADDLEOCR"
             ) from exc
-        self._engine = PaddleOCR(lang=self.lang)
+        # enable_mkldnn=False: paddlepaddle 3.3.x's oneDNN PIR instruction
+        # conversion crashes on Windows (ConvertPirAttribute2RuntimeAttribute).
+        # Unused submodels are disabled to keep init cheap and narrow the
+        # failure surface — orientation/unwarping stay a recognition-time
+        # concern of preprocessing variants, not the OCR adapter.
+        self._engine = PaddleOCR(
+            lang=self.lang,
+            enable_mkldnn=False,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
         return self._engine
 
     # -- OCRProvider protocol ---------------------------------------------------

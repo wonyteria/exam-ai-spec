@@ -134,6 +134,7 @@ class LogicFlag(BaseModel):
         "unsolvable_question",
         "ambiguous_answer",
         "invalid_figure",
+        "math_check_failed",
     ]
     detail: str = ""
 

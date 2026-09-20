@@ -31,6 +31,7 @@ class GateReport(BaseModel):
     unsolvable_question: int = 0
     ambiguous_answer: int = 0
     invalid_figure: int = 0
+    math_check_failed: int = 0
     unverified: int = 0
     hwp_mismatch: int = 0
     # RESTORE-07: expected-manifest reconciliation + artifact proof.
