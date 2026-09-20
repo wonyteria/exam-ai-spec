@@ -1,0 +1,4 @@
+{"family": "golden-001-replay", "provider": "paddleocr", "status": "NOT_RUN", "detail": "paddleocr not installed — install paddlepaddle+paddleocr or run without EXAMDNA_PADDLEOCR"}
+{"family": "golden-001-replay", "provider": "mock", "status": "FAIL", "char_exact": 0.0, "critical_matched": 0, "critical_total": 172, "critical_exact_rate": 0.0, "source_hallucination": 0, "elapsed_s": 0.0, "peak_bytes": 528}
+{"family": "gyenam-2025-imagepdf", "provider": "paddleocr", "status": "NOT_RUN", "detail": "paddleocr not installed — install paddlepaddle+paddleocr or run without EXAMDNA_PADDLEOCR"}
+{"family": "gyenam-2025-imagepdf", "provider": "mock", "status": "REVIEW", "char_exact": null, "critical_matched": 0, "critical_total": 0, "critical_exact_rate": null, "source_hallucination": 0, "elapsed_s": 0.0, "peak_bytes": 528}
