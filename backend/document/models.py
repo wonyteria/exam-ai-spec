@@ -164,6 +164,52 @@ class Question(BaseModel):
 class PageImage(BaseModel):
     uri: str
     variants: dict[str, str] = Field(default_factory=dict)
+    # sha256 of each derived variant — derived bytes are evidence, and the
+    # hash binds crops/recognition inputs to an exact variant (RESTORE-01).
+    variant_sha256: dict[str, str] = Field(default_factory=dict)
+
+
+class PdfPageInventory(BaseModel):
+    """Per-page census of a PDF's native content — recorded before any
+    image-recognition runs. An image-only page is the scan path; a page
+    with a real text layer also keeps native text/vector extraction as
+    separate evidence (RESTORE-01)."""
+
+    page_index: int
+    width_pt: float = 0.0
+    height_pt: float = 0.0
+    rotation: int = 0
+    mediabox: list[float] = Field(default_factory=list)
+    cropbox: list[float] = Field(default_factory=list)
+    text_chars: int = 0
+    text_objects: int = 0
+    image_objects: int = 0
+    path_objects: int = 0
+    form_objects: int = 0
+    shading_objects: int = 0
+    other_objects: int = 0
+    image_bounds_pt: list[list[float]] = Field(default_factory=list)
+    image_only: bool = False          # no text layer — scan path
+    text_layer_sparse: bool = False   # some text but too thin to trust
+
+
+class TransformStep(BaseModel):
+    """One recorded, invertible transform applied to source pixels."""
+
+    kind: str                        # pdf_raster | exif_orientation | ...
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceAnchor(BaseModel):
+    """Binds a derived region/crop back to source coordinates — every
+    recognized candidate must be able to state where it came from."""
+
+    source_sha256: str = ""
+    page_index: int = -1
+    bbox_px: Optional[BBox] = None        # working-pixel bbox as detected
+    source_bbox: Optional[BBox] = None    # mapped back through the chain
+    transform_chain: list[TransformStep] = Field(default_factory=list)
+    crop_sha256: Optional[str] = None
 
 
 class Page(BaseModel):
@@ -191,6 +237,12 @@ class Page(BaseModel):
     # silently treated as a question page; UNKNOWN forces confirmation.
     page_role: str = "UNKNOWN"
     role_source: str = "AUTO"  # AUTO | USER
+    # RESTORE-01 source evidence: native PDF census, ordered invertible
+    # transforms, and an explicit failure marker — a page that could not
+    # be rasterized is never silently skipped.
+    inventory: Optional[PdfPageInventory] = None
+    transform_chain: list[TransformStep] = Field(default_factory=list)
+    processing_error: Optional[str] = None
 
 
 class ExamMetadata(BaseModel):
