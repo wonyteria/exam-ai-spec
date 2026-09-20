@@ -30,6 +30,7 @@ class GateReport(BaseModel):
     logic_conflict: int = 0
     unsolvable_question: int = 0
     ambiguous_answer: int = 0
+    invalid_figure: int = 0
     unverified: int = 0
     hwp_mismatch: int = 0
     document_empty: bool = False

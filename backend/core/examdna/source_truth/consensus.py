@@ -130,7 +130,7 @@ def _materialize(document: Document) -> None:
             elif atu.field == "body":
                 q.body.append(TextSpan(text=str(atu.value), atu_ids=[atu.id]))
             elif atu.field == "figure":
-                q.figures.append(Figure(topology={"description": str(atu.value)}))
+                q.figures.append(_materialize_figure(atu, q))
             elif atu.field == "points":
                 try:
                     q.points = int(atu.value)
@@ -150,6 +150,48 @@ def _materialize(document: Document) -> None:
         ]
     _sort_questions(document)
     _link_subquestions(document)
+
+
+def _materialize_figure(atu: ATU, q: Question) -> Figure:
+    """Build the Figure for a verified figure ATU.
+
+    A dict value carrying a `scene` payload is parsed as a FigureScene and
+    checked twice — structural validation plus semantic consistency —
+    before it is attached. Any defect flags the question `invalid_figure`
+    so the gate can never pass a malformed or self-contradictory figure
+    (RESTORE-06); the figure is still attached so review can inspect it.
+    """
+    from document.models import LogicFlag
+    from document.scene import FigureScene, validate_scene
+    from document.scene_semantics import check_scene
+
+    value = atu.value
+    if not isinstance(value, dict) or "scene" not in value:
+        return Figure(topology={"description": str(value)}, source=atu.source)
+
+    fig = Figure(
+        topology={"description": str(value.get("description") or "")},
+        source=atu.source,
+    )
+    try:
+        scene = FigureScene(**value["scene"])
+    except Exception as exc:  # noqa: BLE001 — malformed payload is data
+        q.verification.logic_flags.append(
+            LogicFlag(kind="invalid_figure", detail=f"scene parse: {exc}")
+        )
+        return fig
+    errors = validate_scene(scene)
+    errors += [f"{i.kind}: {i.detail}" for i in check_scene(scene)]
+    fig.scene = scene
+    if errors:
+        fig.topology["issues"] = errors
+        q.verification.logic_flags.append(
+            LogicFlag(
+                kind="invalid_figure",
+                detail="; ".join(errors[:5]),
+            )
+        )
+    return fig
 
 
 _SUBQ = re.compile(r"^(\d+)-(\d+)$")

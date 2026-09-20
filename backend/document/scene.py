@@ -18,13 +18,14 @@ from pydantic import BaseModel, Field
 # -- allowed vocabulary ----------------------------------------------------------
 
 POINT_PRIMITIVES = {"point"}
-STROKE_PRIMITIVES = {"segment", "line", "ray", "polyline", "arc"}
+STROKE_PRIMITIVES = {"segment", "line", "ray", "polyline", "arc", "curve"}
 SHAPE_PRIMITIVES = {"circle", "polygon"}
 MARK_PRIMITIVES = {
     "angle_mark",        # ∠ at a vertex (optionally right-angle)
     "right_angle_mark",  # ┐
     "parallel_mark",     # arrow ticks on parallel lines
     "equal_mark",        # equal-length tick marks
+    "hatch",             # hatching inside a shape (refs the shape)
 }
 TEXT_PRIMITIVES = {"label", "axis", "tick"}
 
@@ -46,6 +47,8 @@ ALLOWED_RELATIONS = {
     "on_circle",        # (point, circle)
     "congruent",        # (shape, shape)
     "midpoint",         # (point, segment)
+    "intersection",     # (stroke, stroke, point) — the point is their crossing
+    "tangent",          # (stroke, circle)
 }
 
 # hard caps — a scene is exam-figure sized, never arbitrary model output
@@ -56,10 +59,11 @@ MAX_COORD = 1e6
 
 # minimum ref counts per primitive kind
 _REFS_REQUIRED = {
-    "segment": 2, "line": 2, "ray": 2, "polyline": 2, "arc": 2,
+    "segment": 2, "line": 2, "ray": 2, "polyline": 2, "arc": 2, "curve": 2,
     "circle": 1, "polygon": 3,
     "angle_mark": 1, "right_angle_mark": 1, "parallel_mark": 1,
-    "equal_mark": 1, "label": 0, "axis": 1, "tick": 1, "point": 0,
+    "equal_mark": 1, "hatch": 1, "label": 0, "axis": 1, "tick": 1,
+    "point": 0,
 }
 
 
