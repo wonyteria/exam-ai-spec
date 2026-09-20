@@ -160,9 +160,9 @@ def test_mock_vision_drives_segmentation_and_recognition(tmp_path):
     assert q.label == "1"
     fields = {a.field for a in q.atus}
     assert {"number", "type", "points", "body", "choice:①", "choice:②"} <= fields
-    # single-provider candidates at confidence 0.9 auto-verify today —
-    # RESTORE-05 replaces that policy; record current behavior.
-    assert all(a.status == VerificationStatus.AUTO_VERIFIED for a in q.atus)
+    # RESTORE-05: a single source — however confident — never auto-verifies.
+    assert all(a.status == VerificationStatus.UNVERIFIED for a in q.atus)
+    assert all(a.note == "single_source" for a in q.atus)
 
 
 def test_mock_ocr_region_calls_are_candidates(tmp_path):

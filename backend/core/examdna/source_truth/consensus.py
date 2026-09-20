@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 
 from document.models import (
+    ATU,
+    ATUKind,
     Choice,
     Document,
     Equation,
@@ -13,35 +15,100 @@ from document.models import (
 )
 from ..context import PipelineContext
 
-AUTO_VERIFY_CONFIDENCE = 0.9
+# RESTORE-05: a confidence number alone never settles a value, and a
+# majority of correlated readings is not independent evidence.
+# AUTO_VERIFIED requires >=2 independent evidence sources agreeing on the
+# exact value. Independence rules (spec 3.1):
+#   - the same provider reading twice / retrying = one source
+#   - paired reference HWPs ("reference:*") = one evidence family — they
+#     may share an upstream origin, so two matching references are still
+#     a single source
+#   - anything else -> UNVERIFIED (humans or more evidence decide)
+MIN_INDEPENDENT_SOURCES = 2
+
+# Critical fields demand exact agreement — no fuzzy matching, ever.
+_CRITICAL_KINDS = {
+    ATUKind.QUESTION_NUMBER,
+    ATUKind.NUMBER,
+    ATUKind.VARIABLE,
+    ATUKind.MATH_SYMBOL,
+    ATUKind.UNIT,
+    ATUKind.POINTS,
+    ATUKind.CHOICE,
+    ATUKind.FIGURE_LABEL,
+    ATUKind.ANGLE,
+    ATUKind.LENGTH,
+}
 
 
 def run(ctx: PipelineContext) -> None:
     """Source Truth: turn Candidates into verified values via consensus.
 
     Rules:
-    - >=2 providers agree on a value       -> AUTO_VERIFIED
-    - providers disagree                   -> CONFLICT
-    - single candidate, high confidence    -> AUTO_VERIFIED
-    - single candidate, low confidence     -> stays UNVERIFIED (never guess)
-    - no candidates                        -> UNREADABLE
+    - >=2 independent sources agree exactly -> AUTO_VERIFIED
+    - sources disagree on value             -> CONFLICT
+    - a single source (any confidence)      -> stays UNVERIFIED
+    - no candidates                         -> UNREADABLE
     """
     counts = {s: 0 for s in VerificationStatus}
     for atu in ctx.document.all_atus():
-        values = {repr(c.value) for c in atu.candidates}
-        if not atu.candidates:
-            atu.status = VerificationStatus.UNREADABLE
-        elif len(values) > 1:
-            atu.status = VerificationStatus.CONFLICT
-        elif len(atu.candidates) >= 2 or atu.candidates[0].confidence >= AUTO_VERIFY_CONFIDENCE:
-            atu.value = atu.candidates[0].value
-            atu.status = VerificationStatus.AUTO_VERIFIED
+        _settle(atu)
         counts[atu.status] += 1
 
     _materialize(ctx.document)
 
     summary = ", ".join(f"{s.value}={n}" for s, n in counts.items() if n)
     ctx.emit("source_verification", f"원본 대조 완료 — {summary or 'ATU 없음'}")
+
+
+def _settle(atu: ATU) -> None:
+    """Apply the independence-aware consensus rules to one ATU."""
+    if atu.status == VerificationStatus.HUMAN_VERIFIED:
+        return  # human decisions are never re-litigated by machines
+    if not atu.candidates:
+        atu.status = VerificationStatus.UNREADABLE
+        return
+    # value -> set of independent source keys
+    by_value: dict[str, set[str]] = {}
+    rep: dict[str, object] = {}
+    for c in atu.candidates:
+        key = _source_key(c.provider)
+        v = repr(c.value)
+        by_value.setdefault(v, set()).add(key)
+        rep.setdefault(v, c.value)
+    if len(by_value) > 1:
+        atu.status = VerificationStatus.CONFLICT
+        atu.note = _conflict_note(by_value)
+        return
+    value_repr, sources = next(iter(by_value.items()))
+    if len(sources) >= MIN_INDEPENDENT_SOURCES:
+        atu.value = rep[value_repr]
+        atu.status = VerificationStatus.AUTO_VERIFIED
+        atu.note = f"independent_sources:{len(sources)}"
+    else:
+        # One source — however confident — is a candidate, not a verdict.
+        atu.status = VerificationStatus.UNVERIFIED
+        atu.note = "single_source"
+
+
+def _source_key(provider: str) -> str:
+    """Collapse correlated candidates into one evidence source.
+
+    `reference:*` providers (paired HWP/HWPX files) share one family: two
+    academies' copies of the same exam are not independent proof.
+    """
+    name = (provider or "").strip()
+    if name.startswith("reference"):
+        return "reference"
+    return name
+
+
+def _conflict_note(by_value: dict[str, set[str]]) -> str:
+    parts = []
+    for v, keys in sorted(by_value.items()):
+        label = v if len(v) <= 40 else v[:37] + "..."
+        parts.append(f"{label}<-{'/'.join(sorted(keys))}")
+    return "conflict:" + "; ".join(parts)
 
 
 def _materialize(document: Document) -> None:

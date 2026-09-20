@@ -21,6 +21,9 @@ def run(ctx: PipelineContext) -> None:
 
     # run -> question id -> result dict
     runs: list[dict[str, dict]] = []
+    if not problems:
+        ctx.emit("solving", "풀이 대상 문항 없음 — 검증된 내용이 없어 건너뜀", "warn")
+        return
     for run_i in range(2):
         results: dict[str, dict] = {}
         for solver in ctx.providers.solver:

@@ -52,6 +52,13 @@ class FakeOCR:
         ]
 
 
+class FakeOCRB(FakeOCR):
+    """Second independent OCR source — RESTORE-05 requires agreement from
+    two independent providers before an ATU auto-verifies."""
+
+    name = "fake-ocr-b"
+
+
 class FakeSolver:
     name = "fake-solver"
 
@@ -66,7 +73,7 @@ class FakeSolver:
 @pytest.fixture()
 def fake_providers(monkeypatch):
     providers = Providers(
-        ocr=[FakeOCR()],
+        ocr=[FakeOCR(), FakeOCRB()],
         vision=[FakeVision()],
         math_ocr=[],
         reasoning=[],

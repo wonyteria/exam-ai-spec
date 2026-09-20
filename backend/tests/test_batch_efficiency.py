@@ -170,6 +170,13 @@ class PageExtractVision:
         return []
 
 
+class PageExtractVisionB(PageExtractVision):
+    """A second, independent provider — RESTORE-05 requires two sources
+    before an ATU can auto-verify, so materialization tests need one."""
+
+    name = "page-vision-b"
+
+
 class CountingOCR:
     name = "counting-ocr"
 
@@ -185,12 +192,17 @@ def test_page_extraction_skips_per_question_ocr(
     store, sample_png, tmp_path, monkeypatch
 ):
     vision = PageExtractVision()
+    vision_b = PageExtractVisionB()
     ocr = CountingOCR()
     monkeypatch.setattr(
         runner,
         "default_providers",
         lambda: Providers(
-            ocr=[ocr], vision=[vision], math_ocr=[], reasoning=[], solver=[]
+            ocr=[ocr],
+            vision=[vision, vision_b],
+            math_ocr=[],
+            reasoning=[],
+            solver=[],
         ),
     )
 

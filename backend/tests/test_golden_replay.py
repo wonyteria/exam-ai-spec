@@ -54,9 +54,27 @@ def test_golden_replay(store, replay_providers):
     assert result.verification.status == expected["expected_status"]
     assert len(result.questions) == len(expected["questions"])
 
+    # RESTORE-05: a single replay provider is one evidence source, so ATUs
+    # stay UNVERIFIED and content is asserted at the candidate level —
+    # the recorded extraction is still checked value-for-value, but it may
+    # not silently finalize into the canonical document.
+    def candidate_values(q, field):
+        return {
+            repr(c.value)
+            for a in q.atus
+            if a.field == field
+            for c in a.candidates
+        }
+
     for got, want in zip(result.questions, expected["questions"]):
         assert (got.label or str(got.number)) == str(want["label"] or want["number"])
-        assert [c.label for c in got.choices] == list((want["choices"] or {}).keys())
-        if want["answer"] is not None:
-            assert got.answer is not None
-            assert got.answer.value == want["answer"]
+        for label, text in (want["choices"] or {}).items():
+            assert repr(text) in candidate_values(got, f"choice:{label}"), (
+                f"q{want['number']} choice {label} missing from candidates"
+            )
+        if want.get("points") is not None:
+            assert repr(want["points"]) in candidate_values(got, "points")
+        assert all(
+            a.status.value in ("UNVERIFIED", "CONFLICT")
+            for a in got.atus
+        )

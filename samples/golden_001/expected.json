@@ -1,6 +1,6 @@
 {
   "source": "golden_001 (실제 학생 시험지 5페이지)",
-  "expected_status": "VERIFIED_FINAL",
+  "expected_status": "NEEDS_REVIEW",
   "questions": [
     {
       "number": 1,
@@ -446,5 +446,6 @@
     "kind": "seeded_replay_fixture",
     "note": "Seeded cache regression fixture — NOT an approved golden oracle. Contains 7 known-wrong answers (Q2,4,8,9,10,14,20), 29 rows vs required 31 nodes/28 scored leaves, 114 pts vs 100. Use only to detect pipeline drift; correctness baseline is reference_draft.json (F2 draft).",
     "known_defects_doc": "reference_draft.json#seeded_expected_known_defects"
-  }
+  },
+  "expected_status_reason": "RESTORE-05: the seeded cache records a single provider family. Single-source candidates stay UNVERIFIED and never auto-finalize, so the gate correctly lands on NEEDS_REVIEW. Content fidelity is asserted at the candidate level in test_golden_replay."
 }

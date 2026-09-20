@@ -25,10 +25,17 @@ def run(ctx: PipelineContext) -> None:
             continue
         image = ctx.resolve_uri(page.clean_uri or page.original.uri)
         page_questions: list[Question] = []
+        seen_labels: set[str] = set()
         for provider in ctx.providers.vision:
             for cand in _region_candidates(provider, image, page.index, ctx):
                 position = len(questions) + len(page_questions) + 1
                 label = str(cand.get("label") or cand.get("number") or position)
+                if label in seen_labels:
+                    # A second provider reporting the same region is
+                    # corroborating evidence (its fields merge via
+                    # page_extractions), not another question.
+                    continue
+                seen_labels.add(label)
                 bbox = _to_pixels(cand.get("bbox"), page.width, page.height)
                 page_questions.append(
                     Question(
