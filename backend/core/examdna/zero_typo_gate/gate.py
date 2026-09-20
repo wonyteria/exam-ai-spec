@@ -9,7 +9,12 @@ from ..context import PipelineContext
 
 def run(ctx: PipelineContext) -> None:
     """Final gate: VERIFIED_FINAL only when every counter is zero."""
-    report = evaluate_gate(ctx.document, hwp_mismatch=ctx.hwp_mismatch or 0)
+    proof_status = (ctx.artifact_proof or {}).get("status", "NOT_RUN")
+    report = evaluate_gate(
+        ctx.document,
+        hwp_mismatch=ctx.hwp_mismatch or 0,
+        artifact_proof=proof_status,
+    )
     ctx.document.verification.gate = report.model_dump()
     ctx.document.verification.status = (
         "VERIFIED_FINAL" if report.passed else "NEEDS_REVIEW"

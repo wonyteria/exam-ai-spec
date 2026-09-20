@@ -99,6 +99,8 @@ def test_non_numeric_labels_skip_continuity_check():
 
 
 def test_verified_document_passes_gate():
+    """Counters zero + a real artifact proof PASS -> VERIFIED_FINAL.
+    Without a hash-bound proof the same document must NOT pass (RESTORE-07)."""
     doc = Document(
         questions=[
             Question(
@@ -108,7 +110,23 @@ def test_verified_document_passes_gate():
         ]
     )
     doc.questions[0].body.append(TextSpan(text="t"))
-    report = evaluate_gate(doc)
+    report = evaluate_gate(doc, artifact_proof="PASS")
     assert report.unverified == 0
     assert report.missing_object == 0
     assert report.passed
+
+
+def test_verified_document_without_artifact_proof_fails():
+    doc = Document(
+        questions=[
+            Question(
+                number=1,
+                atus=[ATU(kind=ATUKind.NUMBER, status=VerificationStatus.HUMAN_VERIFIED)],
+            )
+        ]
+    )
+    doc.questions[0].body.append(TextSpan(text="t"))
+    # No proof run -> NOT_RUN -> fail closed, never VERIFIED_FINAL.
+    report = evaluate_gate(doc)
+    assert report.artifact_proof == "NOT_RUN"
+    assert not report.passed

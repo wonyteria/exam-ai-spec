@@ -33,24 +33,55 @@ class GateReport(BaseModel):
     invalid_figure: int = 0
     unverified: int = 0
     hwp_mismatch: int = 0
+    # RESTORE-07: expected-manifest reconciliation + artifact proof.
+    manifest_mismatch: int = 0
+    unprocessed_pages: int = 0
+    artifact_proof: str = "NOT_RUN"  # PASS | FAILED | NOT_RUN
     document_empty: bool = False
     missing_numbers: list[int] = []  # detail for missing_object, not a counter
+    manifest_mismatches: list[dict] = []  # detail for manifest_mismatch
+    lineage: dict = {}  # hash chain evidence, not a counter
 
     @property
     def passed(self) -> bool:
-        return (
-            all(
-                v == 0
-                for k, v in self.model_dump().items()
-                if k not in ("document_empty", "missing_numbers")
+        counters = all(
+            v == 0
+            for k, v in self.model_dump().items()
+            if k
+            not in (
+                "document_empty",
+                "missing_numbers",
+                "manifest_mismatches",
+                "lineage",
+                "artifact_proof",
             )
+        )
+        # VERIFIED_FINAL needs a real hash-bound artifact proof — an
+        # artifact that was never verified is NOT_RUN, never a pass.
+        return (
+            counters
             and not self.document_empty
+            and self.artifact_proof == "PASS"
         )
 
 
-def evaluate_gate(document: Document, hwp_mismatch: int = 0) -> GateReport:
-    """P0-A ZERO TYPO FINAL: every counter must be zero to ship VERIFIED_FINAL."""
-    report = GateReport(hwp_mismatch=hwp_mismatch)
+def evaluate_gate(
+    document: Document,
+    hwp_mismatch: int = 0,
+    artifact_proof: str = "NOT_RUN",
+) -> GateReport:
+    """P0-A ZERO TYPO FINAL + RESTORE-07 expected-manifest coverage.
+
+    `ATU=0` is never read as "zero missing": the expected manifest (built
+    from candidate evidence) is reconciled against what materialized, and
+    unprocessed pages count too. The artifact proof must be a real PASS —
+    NOT_RUN or FAILED block VERIFIED_FINAL.
+    """
+    from document.manifest import build_expected_manifest, build_lineage, reconcile
+
+    report = GateReport(
+        hwp_mismatch=hwp_mismatch, artifact_proof=artifact_proof
+    )
 
     for atu in document.all_atus():
         if atu.status in (
@@ -86,4 +117,10 @@ def evaluate_gate(document: Document, hwp_mismatch: int = 0) -> GateReport:
         report.missing_numbers = gaps
 
     report.document_empty = len(document.questions) == 0
+
+    manifest = build_expected_manifest(document)
+    report.manifest_mismatches = reconcile(manifest, document)
+    report.manifest_mismatch = len(report.manifest_mismatches)
+    report.unprocessed_pages = len(manifest["unprocessed_pages"])
+    report.lineage = build_lineage(document)
     return report

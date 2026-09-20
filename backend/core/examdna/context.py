@@ -35,6 +35,8 @@ class PipelineContext:
     objects: Optional[object] = None  # ObjectStore — resolves local:// URIs
     event_sink: Optional[Callable[[str, str, str], None]] = None
     hwp_mismatch: int | None = None
+    # Hash-bound artifact proof from export_verification (RESTORE-07).
+    artifact_proof: Optional[dict] = None
 
     def emit(self, stage: str, message: str, level: str = "info") -> None:
         if self.event_sink is not None:
