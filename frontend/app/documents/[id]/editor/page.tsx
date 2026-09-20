@@ -2,7 +2,8 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { activeTenant, API, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import { activeTenant, agentPropose, applyChanges, API, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import type { AgentProposal } from "@/lib/api";
 import Modal from "@/components/Modal";
 
 export default function EditorPage() {
@@ -18,6 +19,7 @@ export default function EditorPage() {
   const [planOpen, setPlanOpen] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [pendingInstruction, setPendingInstruction] = useState("");
+  const [pendingProposal, setPendingProposal] = useState<AgentProposal | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
 
   useEffect(() => {
@@ -35,6 +37,26 @@ export default function EditorPage() {
     setBusy(true);
     const lines = [`> ${ins}`];
     try {
+      // Exam Agent path (RESTORE-25): structural commands are translated
+      // to canonical ops server-side — previewed, then applied through
+      // /changes with If-Match (revisioned, undoable).
+      const tenant = activeTenant();
+      if (tenant) {
+        const proposal = pendingProposal ?? await agentPropose(tenant, id, ins).catch(() => null);
+        if (proposal && proposal.recognized && proposal.ops.length > 0) {
+          const r = await applyChanges(tenant, id, proposal.ops, proposal.if_match);
+          lines.push(`적용: ${proposal.explanation}`);
+          lines.push(`revision #${r?.data?.revision?.revision_no ?? "?"}`);
+          setPendingProposal(null);
+          setPreviewKey((k) => k + 1);
+          setListKey((k) => k + 1);
+          setBusy(false);
+          setSubmitBusy(false);
+          setLog((l) => [...lines, ...l]);
+          setInstruction("");
+          return;
+        }
+      }
       const res = await sendEdit(id, ins);
       if (res.ok) {
         lines.push(
@@ -106,9 +128,19 @@ export default function EditorPage() {
               onKeyDown={(e) => e.key === "Enter" && !composing && submit()}
             />
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!instruction.trim() || busy || submitBusy) return;
-                setPendingInstruction(instruction.trim());
+                const cmd = instruction.trim();
+                setPendingInstruction(cmd);
+                // fetch the agent's structural proposal for the preview
+                const tenant = activeTenant();
+                setPendingProposal(null);
+                if (tenant) {
+                  try {
+                    const p = await agentPropose(tenant, id, cmd);
+                    if (p.recognized) setPendingProposal(p);
+                  } catch { /* preview optional */ }
+                }
                 setPlanOpen(true);
               }}
               disabled={busy}
@@ -167,6 +199,14 @@ export default function EditorPage() {
       >
         <p className="mb-3 text-sm">아래 변경 지시를 적용하시겠습니까?</p>
         <pre className="mb-3 whitespace-pre-wrap rounded border bg-gray-50 p-2 text-xs">{pendingInstruction}</pre>
+        {pendingProposal && (
+          <div className="mb-3 rounded border border-blue-200 bg-blue-50 p-2 text-xs">
+            <p className="mb-1 font-medium text-blue-800">구조화된 연산: {pendingProposal.explanation}</p>
+            {pendingProposal.preview.map((line, i) => (
+              <p key={i} className="text-blue-700">{line}</p>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             className="rounded border px-3 py-1 text-sm"

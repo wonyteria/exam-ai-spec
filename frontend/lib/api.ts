@@ -259,6 +259,90 @@ export async function sendEdit(
   return res.json();
 }
 
+// --- exam agent (RESTORE-25) ---------------------------------------------------
+
+export interface AgentProposal {
+  command: string;
+  recognized: boolean;
+  explanation: string;
+  preview: string[];
+  ops: Record<string, unknown>[];
+  if_match: string;
+}
+
+export async function agentPropose(
+  tenantId: string,
+  docId: string,
+  command: string,
+): Promise<AgentProposal> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/agent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export async function applyChanges(
+  tenantId: string,
+  docId: string,
+  ops: Record<string, unknown>[],
+  ifMatch: string,
+) {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/changes`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": ifMatch,
+      },
+      body: JSON.stringify({ ops }),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export interface ComposeResult {
+  exams: {
+    document_id: string;
+    revision_id: string;
+    questions: number;
+    answer_key: Record<string, string>;
+  }[];
+  unfilled: Record<string, number>;
+  total_estimated_minutes: number;
+}
+
+export async function composeExam(
+  tenantId: string,
+  docId: string,
+  body: {
+    count?: number;
+    difficulty_mix?: Record<string, number>;
+    versions?: number;
+    seed?: number;
+    title?: string;
+    time_budget_min?: number;
+  },
+): Promise<ComposeResult> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/compose`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
 export async function exportDoc(
   docId: string,
   format: string,
