@@ -124,3 +124,29 @@ Defects found by this verification and fixed in 5ad82a2:
 
 Frontend: `renumberQuestion()` in `lib/api.ts` (revisions -> head ->
 If-Match CAS) + inline "번호 확정" control on `?`-labeled review cards.
+
+## Hancom proof + independent readback (2026-09)
+
+`WindowsHWPWorker` is available on this machine — the service E2E
+`exam.hwp`/`exam.pdf` artifacts were produced by a real Hancom COM
+round-trip. Verified on the persisted document's **head** revision
+(re-rendered from canonical head so labels 4/10/16 are included):
+
+| proof | result |
+|---|---|
+| `run_hwp_proof(hwpx, workdir, doc)` — Hancom open→save-as-HWP→reopen→PDF, then reverse-parse + rendered-PDF text check | **PASS, 0 mismatches** |
+| Stale-artifact check (pre-confirmation artifact vs head doc) | correctly reported 4 mismatches (heads "10."/"16." etc.) — the proof catches drift as designed |
+| hwpilot `text` readback on `exam.hwpx` (head render) | 0 mismatches |
+| hwpilot `text` readback on `exam.hwp` (Hancom reconvert of head hwpx) | 0 mismatches |
+
+hwpilot (devxoul/hwpilot @7471fdfa, MIT) is now wired in as an
+**independent observer**: `qa/hwpilot_proof.py` shells out to the CLI
+(resolved via HWPILOT_CMD / HWPILOT_DIR / sibling tools/hwpilot / PATH).
+`artifact_bridge` fills `NATIVE_OBJECT_INTEGRITY` for binary HWP from the
+readback (previously no evidence source existed) and any FAILED readback
+downgrades coverage checks our own parser passed. `export_verification`
+records `independent_readback` evidence per artifact — content-level,
+never a substitute for render proof. hwpilot limitations found during
+integration: endNote subList text is not exposed in `text` output, and a
+paragraph followed by an endNote run loses its final char — handled with
+a documented dotless-head acceptance.

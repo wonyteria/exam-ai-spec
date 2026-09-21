@@ -37,12 +37,20 @@ Math, Status.
 | FormalGeo | FormalGeo/FormalGeo | 기하 형식언어 | FigureDNA | **GPL-3** | — | — | **copyleft — production 불가** | O | — | — | O | DO_NOT_USE |
 | MathOCR | ChristosBouronikos/MathOCR | 다중 수식 엔진 전략 | MathDNA | MIT | 엔진별 상이 | — | 허용 | O | 권장 | — | O | REFERENCE_ARCHITECTURE |
 | python-hwpx | airmang/python-hwpx | HWPX 생성/파싱 | Document Engine | Apache-2.0 | — | — | 허용 | O | 불필요 | O | O | REVIEW_REQUIRED |
+| hwpilot | devxoul/hwpilot | HWP 5.0/HWPX 독립 readback·편집 CLI (TS/Node) | ExportDNA proof | MIT | — | — | 허용 | O | 불필요 | O | — | USE_THROUGH_ADAPTER |
 | hwpx-plugins | airmang/hwpx-plugins | HWPX 플러그인 참고 | Document Engine | Apache-2.0 | — | — | 허용 | O | 불필요 | O | — | REFERENCE_ARCHITECTURE |
 | DocStruct | zeetee1235/DocStruct | parser+OCR 융합 구조 | ReadDNA | 확인 필요 | — | — | 확인 필요 | O | — | O | — | REFERENCE_ARCHITECTURE |
 | TextDoctor | (arXiv 2503.04021) | 텍스트 inpainting | LayerDNA | 코드 확인 필요 | — | 7개 공개 데이터셋 | 확인 필요 | — | 필요 | — | — | REFERENCE_ARCHITECTURE |
 | Uni-DocDiff | (arXiv 2508.04055) | 통합 문서 복원 | LayerDNA | 코드 확인 필요 | — | — | 확인 필요 | — | 필요 | — | — | REFERENCE_ARCHITECTURE |
 | LATTE | (arXiv 2409.14201) | LaTeX 반복 정제 | MathDNA | 코드 확인 필요 | — | — | 확인 필요 | — | 필요 | — | O | REFERENCE_ARCHITECTURE |
 | FastGDP | NikhilSDate/FastGDPJEI | 경량 도형 파서 | FigureDNA | 확인 필요 | — | 포함 | 확인 필요 | O | 불필요 | — | O | REFERENCE_ARCHITECTURE |
+
+### 고정 버전
+
+- hwpilot: `7471fdfa` (2026-04-20, v0.1.0) — npm 미배포 상태라
+  `tools/hwpilot`에 소스 체크아웃 + `tsc` 빌드(`dist/`)로 사용.
+  경로 해석: `HWPILOT_CMD` → `HWPILOT_DIR` → sibling `tools/hwpilot` → PATH.
+  용도는 readback 증거(콘텐츠 수준) — 렌더 증명은 여전히 Hancom 워커 전용.
 
 ## 운영 규칙
 

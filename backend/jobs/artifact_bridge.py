@@ -21,6 +21,7 @@ from qa.hwp_proof import (
     _pdf_text_mismatches,
     pdf_text,
 )
+from qa.hwpilot_proof import hwpilot_readback
 from renderers.hwp import HWPWorkerUnavailable, WindowsHWPWorker
 
 
@@ -112,6 +113,12 @@ def hwpx_checks(hwpx_path: Path, doc) -> dict[str, str]:
     coverage = "PASSED" if _hwpx_content_mismatches(hwpx_path, doc) == 0 else "FAILED"
     checks["NATIVE_OBJECT_INTEGRITY"] = coverage
     checks["ARTIFACT_SEMANTIC_COVERAGE"] = coverage
+    # A FAILED verdict from the independent hwpilot parser downgrades —
+    # our writer and in-repo parser could share a systematic bug.
+    readback = hwpilot_readback(hwpx_path, doc)
+    if readback is not None and readback > 0:
+        checks["NATIVE_OBJECT_INTEGRITY"] = "FAILED"
+        checks["ARTIFACT_SEMANTIC_COVERAGE"] = "FAILED"
     checks["FORMAT_CONVERSION_PROVENANCE"] = "PASSED"
     checks["ARTIFACT_HASH_BINDING"] = "PASSED"
     checks["OUTPUT_MODE_CONTENT_POLICY"] = (
@@ -124,8 +131,9 @@ def hwpx_checks(hwpx_path: Path, doc) -> dict[str, str]:
 
 def hwp_checks(hwp_path: Path, pdf_path: Path, doc, proof: dict) -> dict[str, str]:
     """HWP checks: worker step-returns prove open/save/reopen; the
-    Hancom-rendered PDF is the honest evidence for content coverage of
-    the binary we cannot re-parse."""
+    Hancom-rendered PDF is honest evidence for rendered content, and
+    hwpilot — an independent HWP 5.0 implementation — re-parses the
+    binary itself for object integrity and semantic coverage."""
     checks = _blank("hwp")
     for k, v in (proof or {}).get("checks", {}).items():
         if k in checks:
@@ -138,6 +146,16 @@ def hwp_checks(hwp_path: Path, pdf_path: Path, doc, proof: dict) -> dict[str, st
         checks["OUTPUT_MODE_CONTENT_POLICY"] = (
             "PASSED" if text.count("정답:") >= _scored(doc) else "NOT_RUN"
         )
+    # Independent binary readback: a parse by code we did not write is
+    # the only direct evidence on the .hwp bytes themselves.
+    readback = hwpilot_readback(hwp_path, doc)
+    if readback is not None:
+        verdict = "PASSED" if readback == 0 else "FAILED"
+        checks["NATIVE_OBJECT_INTEGRITY"] = verdict
+        if verdict == "FAILED":
+            checks["ARTIFACT_SEMANTIC_COVERAGE"] = "FAILED"
+        elif checks["ARTIFACT_SEMANTIC_COVERAGE"] == "NOT_RUN":
+            checks["ARTIFACT_SEMANTIC_COVERAGE"] = "PASSED"
     return checks
 
 
