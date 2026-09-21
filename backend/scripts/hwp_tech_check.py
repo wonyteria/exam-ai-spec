@@ -107,13 +107,13 @@ def main() -> int:
         hwp_path = out_dir / "tech_check.hwp"
         try:
             print("step: save_hwpx", file=sys.stderr, flush=True)
-            hwp.SaveAs(str(hwpx_path), "HWPX")
+            hwp.SaveAs(str(hwpx_path), "HWPX", "")
             result["steps"]["save_hwpx"] = "ok"
         except Exception as exc:
             result["steps"]["save_hwpx"] = f"FAIL {exc}"
         try:
             print("step: save_hwp", file=sys.stderr, flush=True)
-            hwp.SaveAs(str(hwp_path))
+            hwp.SaveAs(str(hwp_path), "HWP", "")
             result["steps"]["save_hwp"] = "ok"
         except Exception as exc:
             result["steps"]["save_hwp"] = f"FAIL {exc}"
@@ -121,7 +121,7 @@ def main() -> int:
         # --- reopen + object inspection ---------------------------------------
         try:
             print("step: reopen", file=sys.stderr, flush=True)
-            hwp.Open(str(hwp_path))
+            hwp.Open(str(hwp_path), "HWP", "versioncheck:false")
             texts = hwp.GetText()
             result["steps"]["reopen_hwp"] = "ok"
             result["reopen_text_head"] = texts[:200]

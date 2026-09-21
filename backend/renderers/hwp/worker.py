@@ -162,6 +162,27 @@ class WindowsHWPWorker:
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
     @staticmethod
+    def _hwp_open(hwp, path: str) -> bool:
+        """Open a document through Hancom COM. Newer Hancom versions
+        reject the single-argument call with DISP_E_BADPARAMCOUNT, so the
+        explicit (path, format, options) form is tried first and the bare
+        call kept as a fallback for older builds."""
+        fmt = "HWPX" if str(path).lower().endswith(".hwpx") else "HWP"
+        try:
+            return bool(hwp.Open(path, fmt, "versioncheck:false"))
+        except Exception:
+            return bool(hwp.Open(path))
+
+    @staticmethod
+    def _hwp_saveas(hwp, path: str, fmt: str):
+        """SaveAs through Hancom COM — same BADPARAMCOUNT compatibility
+        problem as Open: the explicit (path, format, arg) form first."""
+        try:
+            return hwp.SaveAs(path, fmt, "")
+        except Exception:
+            return hwp.SaveAs(path, fmt)
+
+    @staticmethod
     def _isolated_roundtrip(
         prog_id: str,
         hwpx_path: str,
@@ -177,15 +198,15 @@ class WindowsHWPWorker:
         try:
             hwp = win32com.client.Dispatch(prog_id)
             hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule")
-            open_hwpx = bool(hwp.Open(str(hwpx_path)))
+            open_hwpx = WindowsHWPWorker._hwp_open(hwp, str(hwpx_path))
             if not open_hwpx:
                 raise RuntimeError("Open(HWPX) returned False")
-            save_hwp = hwp.SaveAs(str(out_hwp), "HWP")
+            save_hwp = WindowsHWPWorker._hwp_saveas(hwp, str(out_hwp), "HWP")
             hwp.Run("FileClose")
-            reopen_hwp = bool(hwp.Open(str(out_hwp)))
+            reopen_hwp = WindowsHWPWorker._hwp_open(hwp, str(out_hwp))
             if not reopen_hwp:
                 raise RuntimeError("ReOpen(HWP) returned False")
-            save_pdf = hwp.SaveAs(str(out_pdf), "PDF")
+            save_pdf = WindowsHWPWorker._hwp_saveas(hwp, str(out_pdf), "PDF")
             hwp.Run("FileClose")
             queue.put(
                 {
@@ -338,10 +359,10 @@ class WindowsHWPWorker:
         try:
             hwp = win32com.client.Dispatch(prog_id)
             hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule")
-            opened = bool(hwp.Open(str(in_path)))
+            opened = WindowsHWPWorker._hwp_open(hwp, str(in_path))
             if not opened:
                 raise RuntimeError(f"Open({in_path}) returned False")
-            saved = hwp.SaveAs(str(out_path), fmt)
+            saved = WindowsHWPWorker._hwp_saveas(hwp, str(out_path), fmt)
             hwp.Run("FileClose")
             queue.put(
                 {

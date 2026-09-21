@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import unescape
 
-from renderers.hwp import HWPWorkerUnavailable, WindowsHWPWorker
+from renderers.hwp import WindowsHWPWorker
 
 
 def run_hwp_proof(hwpx_path: Path, workdir: Path, document=None) -> int | None:
@@ -30,7 +30,10 @@ def run_hwp_proof(hwpx_path: Path, workdir: Path, document=None) -> int | None:
         worker.convert_with_proof(
             hwpx_path, workdir / "roundtrip.hwp", workdir / "roundtrip.pdf"
         )
-    except HWPWorkerUnavailable:
+    except Exception:
+        # is_available() passing does not guarantee the COM round-trip
+        # succeeds — a proof that could not run is NOT_RUN, never a
+        # pipeline-fatal error (the artifact simply has no HWP evidence).
         return None
 
     mismatches = 0
