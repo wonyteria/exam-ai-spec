@@ -48,7 +48,7 @@ export default function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -56,13 +56,17 @@ export default function Modal({
     >
       <div
         ref={boxRef}
-        className="w-full max-w-3xl rounded-lg bg-white p-4 shadow-xl dark:bg-gray-900"
+        className="glass-pop w-full max-w-3xl rounded-2xl p-5"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="rounded border px-2 py-1 text-sm">
-            닫기
+          <button
+            onClick={onClose}
+            aria-label="닫기"
+            className="btn-ghost flex h-8 w-8 items-center justify-center !p-0 text-base leading-none"
+          >
+            ✕
           </button>
         </div>
         {children}

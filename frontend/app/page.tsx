@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AcademyBar from "@/components/AcademyBar";
-import Modal from "@/components/Modal";
 import {
   listDocuments,
   listJobs,
@@ -12,6 +11,10 @@ import {
   type DocumentSummary,
   type JobSummary,
 } from "@/lib/api";
+
+const JOB_STATE_LABEL: Record<string, { label: string; cls: string }> = {
+  NEEDS_REVIEW: { label: "검토 필요", cls: "chip-amber" },
+};
 
 export default function UploadPage() {
   const router = useRouter();
@@ -24,7 +27,6 @@ export default function UploadPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [queue, setQueue] = useState<{ name: string; status: string }[]>([]);
   const [offline, setOffline] = useState(false);
-  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const on = () => setOffline(false);
@@ -60,7 +62,7 @@ export default function UploadPage() {
   }, []);
 
   const onFiles = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | File[] | null) => {
       if (!files?.length || busy) return;
       const ALLOWED = /\.(jpe?g|png|pdf|bmp|webp)$/i;
       const MAX_BYTES = 50 * 1024 * 1024;
@@ -112,17 +114,23 @@ export default function UploadPage() {
     [busy, router],
   );
 
+  const liveJobs = jobs.filter(
+    (j) => !["COMPLETED", "FAILED", "CANCELLED"].includes(j.state),
+  );
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
       <AcademyBar onChanged={refreshLibrary} />
       <div className="text-center">
-        <h1 className="mb-2 text-3xl font-bold">AI 시험지 복원</h1>
-        <p className="text-gray-500">
+        <h1 className="mb-2 bg-gradient-to-br from-white via-indigo-100 to-cyan-200 bg-clip-text text-4xl font-bold tracking-tight text-transparent">
+          AI 시험지 복원
+        </h1>
+        <p className="text-dim">
           풀고 채점한 시험지를 올리면 원래 인쇄 시험지로 복원합니다
         </p>
       </div>
       {offline && (
-        <p className="rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <p className="alert-amber px-4 py-2 text-sm" role="alert">
           오프라인 상태입니다. 네트워크 복구 후 다시 시도하세요.
         </p>
       )}
@@ -137,39 +145,53 @@ export default function UploadPage() {
           setDragging(false);
           onFiles(e.dataTransfer.files);
         }}
-        className={`flex h-64 w-full max-w-2xl cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
-          dragging ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-gray-50"
+        className={`glass lift flex h-64 w-full max-w-2xl cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed transition ${
+          dragging
+            ? "!border-cyan-300/70 !bg-cyan-400/10 shadow-[0_0_60px_rgba(34,211,238,0.25)]"
+            : "border-white/20"
         }`}
       >
-        <span className="text-lg font-medium">
+        <span className="text-3xl" aria-hidden>
+          ⬆
+        </span>
+        <span className="mt-3 text-lg font-medium">
           {busy ? "업로드 중..." : "시험지 사진·스캔·PDF를 여기에 드롭"}
         </span>
-        <span className="mt-2 text-sm text-gray-400">또는 클릭해서 선택</span>
+        <span className="mt-1 text-sm text-white/40">또는 클릭해서 선택</span>
         <input
           type="file"
           multiple
           accept=".jpg,.jpeg,.png,.pdf,.bmp,.webp"
           className="hidden"
-          onChange={(e) => onFiles(e.target.files)}
+          onChange={(e) => {
+            const picked = e.target.files ? Array.from(e.target.files) : null;
+            e.target.value = ""; // allow re-picking the same files
+            onFiles(picked);
+          }}
         />
       </label>
       {error && (
-        <p className="text-sm text-red-600" role="alert">
+        <p className="alert-red px-4 py-2 text-sm" role="alert">
           <span className="font-semibold">{error.code}</span>
           {error.message ? `: ${error.message}` : ""}
         </p>
       )}
       {queue.length > 0 && (
-        <ul className="w-full max-w-2xl rounded-lg border bg-white">
+        <ul className="glass w-full max-w-2xl overflow-hidden rounded-2xl">
           {queue.map((q, i) => (
-            <li key={`${q.name}-${i}`} className="flex justify-between border-b px-3 py-2 text-sm last:border-b-0">
+            <li
+              key={`${q.name}-${i}`}
+              className="flex justify-between border-b border-white/8 px-4 py-2.5 text-sm last:border-b-0"
+            >
               <span className="truncate">{q.name}</span>
-              <span className="flex items-center gap-2 text-gray-500">
+              <span className="flex items-center gap-2 text-white/50">
                 {q.status}
                 {!busy && (
                   <button
-                    className="rounded border px-2 py-0.5 text-xs"
-                    onClick={() => setDeleteIndex(i)}
+                    className="btn-ghost !px-2 !py-0.5 text-xs"
+                    onClick={() =>
+                      setQueue((q) => q.filter((_, idx) => idx !== i))
+                    }
                   >
                     제거
                   </button>
@@ -179,117 +201,74 @@ export default function UploadPage() {
           ))}
         </ul>
       )}
-      <Modal
-        title="삭제 확인"
-        open={deleteIndex !== null}
-        onClose={() => {
-          if (busy) return;
-          setDeleteIndex(null);
-        }}
-      >
-        <p className="mb-3 text-sm">큐에서 이 파일을 제거하시겠습니까?</p>
-        <div className="flex gap-2">
-          <button
-            className="rounded border px-3 py-1 text-sm"
-            onClick={() => setDeleteIndex(null)}
-            disabled={busy}
-          >
-            취소
-          </button>
-          <button
-            className="rounded bg-red-600 px-3 py-1 text-sm text-white"
-            onClick={() => {
-              if (deleteIndex === null || busy) return;
-              setQueue((q) => q.filter((_, idx) => idx !== deleteIndex));
-              setDeleteIndex(null);
-            }}
-            disabled={busy}
-          >
-            삭제
-          </button>
-        </div>
-      </Modal>
 
       <Link
         href="/rebrand"
-        className="w-full max-w-2xl rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-2 text-center text-sm text-blue-700 hover:bg-blue-50"
+        className="glass-soft lift w-full max-w-2xl rounded-2xl border-dashed px-4 py-2.5 text-center text-sm text-cyan-300"
       >
         외부 학원 HWP/HWPX 브랜드 변경 →
       </Link>
 
-      {jobs.filter((j) =>
-        !["COMPLETED", "FAILED", "CANCELLED"].includes(j.state),
-      ).length > 0 && (
+      {liveJobs.length > 0 && (
         <div className="w-full max-w-2xl">
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+          <h2 className="mb-2 text-sm font-semibold text-white/70">
             진행 중·검토 대기 작업
           </h2>
-          <ul className="divide-y rounded-xl border border-gray-200 bg-white">
-            {jobs
-              .filter(
-                (j) => !["COMPLETED", "FAILED", "CANCELLED"].includes(j.state),
-              )
-              .map((j) => (
-                <li key={j.id}>
-                  <Link
-                    href={
-                      j.state === "NEEDS_REVIEW"
-                        ? `/documents/${j.document_id}/review`
-                        : `/jobs/${j.id}?doc=${j.document_id}`
-                    }
-                    className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50"
+          <ul className="glass divide-y divide-white/8 overflow-hidden rounded-2xl">
+            {liveJobs.map((j) => (
+              <li key={j.id}>
+                <Link
+                  href={
+                    j.state === "NEEDS_REVIEW"
+                      ? `/documents/${j.document_id}/review`
+                      : `/jobs/${j.id}?doc=${j.document_id}`
+                  }
+                  className="lift flex items-center justify-between px-4 py-3 text-sm"
+                >
+                  <span className="text-white/70">
+                    작업 {j.id.slice(0, 12)}…
+                  </span>
+                  <span
+                    className={`chip ${JOB_STATE_LABEL[j.state]?.cls ?? "chip-blue"}`}
                   >
-                    <span className="text-gray-600">
-                      작업 {j.id.slice(0, 12)}…
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        j.state === "NEEDS_REVIEW"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-blue-100 text-blue-800"
-                      }`}
-                    >
-                      {j.state === "NEEDS_REVIEW" ? "검토 필요" : "처리 중"}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                    {JOB_STATE_LABEL[j.state]?.label ?? "처리 중"}
+                  </span>
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
       )}
 
       {docs.length > 0 && (
         <div className="w-full max-w-2xl">
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">문서 보관함</h2>
-          <ul className="divide-y rounded-xl border border-gray-200 bg-white">
+          <h2 className="mb-2 text-sm font-semibold text-white/70">문서 보관함</h2>
+          <ul className="glass divide-y divide-white/8 overflow-hidden rounded-2xl">
             {docs.map((d) => {
-              const needsReview = !["HUMAN_VERIFIED", "AUTO_VERIFIED"].includes(
+              const verified = ["HUMAN_VERIFIED", "AUTO_VERIFIED"].includes(
                 d.status,
               );
-              const badge = d.status === "HUMAN_VERIFIED" ||
-                d.status === "AUTO_VERIFIED"
-                ? "bg-green-100 text-green-800"
+              const cls = verified
+                ? "chip-green"
                 : d.status === "CONFLICT" || d.status === "UNREADABLE"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-amber-100 text-amber-800";
+                  ? "chip-red"
+                  : "chip-amber";
               return (
                 <li key={d.id}>
                   <Link
                     href={
-                      needsReview
-                        ? `/documents/${d.id}/review`
-                        : `/documents/${d.id}/editor`
+                      verified
+                        ? `/documents/${d.id}/editor`
+                        : `/documents/${d.id}/review`
                     }
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                    className="lift flex items-center justify-between px-4 py-3"
                   >
                     <span className="text-sm">
                       {String(d.metadata?.school || "시험지")} — {d.questions}
                       문항, {d.pages}페이지
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${badge}`}
-                    >
-                      {needsReview ? "검토 필요" : "검증 완료"}
+                    <span className={`chip ${cls}`}>
+                      {verified ? "검증 완료" : "검토 필요"}
                     </span>
                   </Link>
                 </li>

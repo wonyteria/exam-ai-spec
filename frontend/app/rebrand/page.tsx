@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AcademyBar from "@/components/AcademyBar";
+import Chrome from "@/components/Chrome";
 import {
   activeTenant,
   getRebrandCandidates,
@@ -181,38 +181,41 @@ export default function RebrandPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-4">
+    <main className="mx-auto max-w-4xl p-4 pt-20">
+      <Chrome title="브랜드 변경" />
       <AcademyBar />
       <h1 className="mt-4 text-xl font-bold">외부 시험지 브랜드 변경</h1>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-        다른 학원 HWP/HWPX의 제목을 현재 학원명으로 바꾸고, 중앙 로고 워터마크를
-        넣고, 쪽번호만 제거합니다. 원본은 변경되지 않습니다.
+      <p className="mt-1 text-sm text-dim">
+        다른 학원 HWP/HWPX의 제목을 바꾸고 로고 워터마크를 넣습니다 — 원본은 변경되지 않습니다.
       </p>
 
       {error && (
-        <div role="alert" className="mt-3 rounded border border-red-400 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+        <div role="alert" className="alert-red mt-3 p-3 text-sm">
           <span className="font-mono font-semibold">{error.code}</span>{" "}
           {error.message}
         </div>
       )}
 
-      <section className="mt-4 rounded border p-4 dark:border-neutral-700">
+      <section className="glass mt-4 rounded-2xl p-4">
         <h2 className="font-semibold">1. 파일 가져오기</h2>
         <input
           ref={fileRef}
           type="file"
           accept=".hwp,.hwpx"
           aria-label="HWP 또는 HWPX 파일"
-          onChange={(e) => onImport(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            onImport(e.target.files?.[0] ?? null);
+            e.target.value = ""; // allow re-importing the same file
+          }}
           disabled={!tenant || busy}
-          className="mt-2"
+          className="mt-2 text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/80 file:px-3 file:py-1.5 file:text-sm file:text-white file:transition hover:file:bg-indigo-400"
         />
         {sourceInfo && (
           <p className="mt-2 text-sm">
             형식: <b>{sourceInfo.format.toUpperCase()}</b> · SHA256{" "}
-            <code className="text-xs">{sourceInfo.sha256.slice(0, 16)}…</code>
+            <code className="text-xs text-cyan-200">{sourceInfo.sha256.slice(0, 16)}…</code>
             {sourceInfo.hancom && (
-              <span className="ml-2 text-amber-600">
+              <span className="ml-2 text-amber-300">
                 HWP 원본 — 스캔에 한글 COM 변환이 필요합니다
               </span>
             )}
@@ -223,7 +226,7 @@ export default function RebrandPage() {
       {manifest && Object.values(manifest.flags ?? {}).some(Boolean) && (
         <div
           role="alert"
-          className="mt-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+          className="alert-amber mt-3 p-3 text-sm"
         >
           이 파일에서 지원 불가/검토 필요 구조가 발견되었습니다:{" "}
           {Object.entries(manifest.flags ?? {})
@@ -235,11 +238,10 @@ export default function RebrandPage() {
       )}
 
       {manifest && (
-        <section className="mt-4 rounded border p-4 dark:border-neutral-700">
+        <section className="glass mt-4 rounded-2xl p-4">
           <h2 className="font-semibold">2. 변경 후보 확인</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            선택한 항목만 변경됩니다. 구조 조사에서 발견된 후보이며 확인이
-            필요한 항목은 표시됩니다.
+          <p className="mt-1 text-xs text-white/50">
+            선택한 항목만 변경됩니다.
           </p>
           {(["title", "pagenum", "watermark"] as const).map((g) =>
             groups[g]?.length ? (
@@ -251,24 +253,25 @@ export default function RebrandPage() {
                 </h3>
                 <ul className="mt-1 space-y-1">
                   {groups[g].map((c) => (
-                    <li key={c.id} className="flex items-center gap-2 text-sm">
+                    <li key={c.id} className="glass-soft flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm">
                       <label className="flex items-center gap-2">
                         <input
                           type="checkbox"
+                          className="inp-check"
                           checked={selected.has(c.id)}
                           onChange={() => toggle(c.id)}
                         />
                         <span>{KIND_LABEL[c.kind] ?? c.kind}</span>
                       </label>
-                      <span className="text-neutral-500">
+                      <span className="text-white/50">
                         {c.text_preview}
                       </span>
                       {c.requires_user_confirm && (
-                        <span className="rounded bg-amber-100 px-1 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        <span className="chip chip-amber">
                           확인 필요
                         </span>
                       )}
-                      <span className="text-xs text-neutral-400">
+                      <span className="text-xs text-white/30">
                         {c.section} · {c.apply_page_type}
                       </span>
                     </li>
@@ -281,7 +284,7 @@ export default function RebrandPage() {
       )}
 
       {manifest && (
-        <section className="mt-4 rounded border p-4 dark:border-neutral-700">
+        <section className="glass mt-4 rounded-2xl p-4">
           <h2 className="font-semibold">3. 브랜드 적용</h2>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-sm">
@@ -289,7 +292,7 @@ export default function RebrandPage() {
               <input
                 value={academy}
                 onChange={(e) => setAcademy(e.target.value)}
-                className="rounded border px-2 py-1 dark:bg-neutral-800"
+                className="inp w-auto"
                 placeholder="우리학원"
               />
             </label>
@@ -299,32 +302,39 @@ export default function RebrandPage() {
                 ref={logoRef}
                 type="file"
                 accept="image/png"
-                onChange={(e) => onLogo(e.target.files?.[0] ?? null)}
+                className="text-sm text-white/70 file:mr-2 file:rounded-lg file:border-0 file:bg-white/10 file:px-2.5 file:py-1 file:text-xs file:text-white"
+                onChange={(e) => {
+                  onLogo(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
               />
             </label>
-            {logoSha && <span className="text-xs text-green-700">로고 등록됨</span>}
+            {logoSha && <span className="chip chip-green">로고 등록됨</span>}
           </div>
-          <div className="mt-2 flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-1">
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <label className="flex items-center gap-1.5">
               <input
                 type="checkbox"
+                className="inp-check"
                 checked={watermarkOn}
                 onChange={(e) => setWatermarkOn(e.target.checked)}
               />
               중앙 워터마크 추가
             </label>
-            <label className="flex items-center gap-1">
+            <label className="flex items-center gap-1.5">
               <input
                 type="checkbox"
+                className="inp-check"
                 checked={replaceWm}
                 onChange={(e) => setReplaceWm(e.target.checked)}
                 disabled={!manifest.existing_watermark_count}
               />
               기존 워터마크와 병합 허용
             </label>
-            <label className="flex items-center gap-1">
+            <label className="flex items-center gap-1.5">
               <input
                 type="checkbox"
+                className="inp-check"
                 checked={removeNums}
                 onChange={(e) => setRemoveNums(e.target.checked)}
               />
@@ -336,12 +346,12 @@ export default function RebrandPage() {
             disabled={
               busy || !academy.trim() || !selected.size || (watermarkOn && !logoSha)
             }
-            className="mt-3 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            className="btn-primary mt-3"
           >
             {busy ? "처리 중…" : "확인 후 적용"}
           </button>
           {watermarkOn && !logoSha && (
-            <p className="mt-1 text-xs text-amber-600">
+            <p className="mt-2 text-xs text-amber-300">
               워터마크를 넣으려면 학원 로고 PNG를 먼저 등록하세요.
             </p>
           )}
@@ -349,8 +359,8 @@ export default function RebrandPage() {
       )}
 
       {result && (
-        <section className="mt-4 rounded border border-green-400 p-4 dark:border-green-700">
-          <h2 className="font-semibold text-green-800 dark:text-green-300">
+        <section className="alert-green mt-4 p-4">
+          <h2 className="font-semibold">
             적용 완료 — 새 revision 생성
           </h2>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -371,26 +381,20 @@ export default function RebrandPage() {
             {Object.entries(result.proof.checks).map(([k, v]) => (
               <li key={k}>
                 <span className="font-mono">{k}</span>:{" "}
-                <b className={v === "PASSED" ? "text-green-700" : "text-amber-700"}>
+                <b className={v === "PASSED" ? "text-emerald-300" : "text-amber-300"}>
                   {v}
                 </b>
               </li>
             ))}
           </ul>
           {result.worker_unavailable && (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm text-amber-300">
               한글 COM worker를 사용할 수 없어 실제 재열기/렌더 증명은
               NOT_RUN입니다. 최종 다운로드 전 실제 한글 증명이 필요합니다.
             </p>
           )}
         </section>
       )}
-
-      <p className="mt-6 text-sm">
-        <Link href="/" className="text-blue-600 underline">
-          ← 업로드로 돌아가기
-        </Link>
-      </p>
     </main>
   );
 }

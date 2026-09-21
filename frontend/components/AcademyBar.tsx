@@ -62,17 +62,25 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
 
   if (!me?.authenticated) {
     return (
-      <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-4">
-        <p className="mb-2 text-sm font-medium">개발 로그인 (dev stub)</p>
+      <div className="glass w-full max-w-2xl rounded-2xl p-4">
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-lg border px-3 py-2 text-sm"
+            className="inp flex-1"
             placeholder="사용자 ID"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              devLogin(name)
+                .then(() => {
+                  setError(null);
+                  refresh();
+                })
+                .catch((err) => setError(String(err)));
+            }}
           />
           <button
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white"
+            className="btn-primary"
             onClick={async () => {
               try {
                 await devLogin(name);
@@ -86,17 +94,17 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
             로그인
           </button>
         </div>
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        {error && <p className="alert-red mt-2 px-3 py-1.5 text-xs">{error}</p>}
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-4">
+    <div className="glass w-full max-w-2xl rounded-2xl p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">{me.display_name || me.user_id}</span>
+        <span className="text-sm font-semibold">{me.display_name || me.user_id}</span>
         <select
-          className="rounded-lg border px-2 py-1.5 text-sm"
+          className="inp w-auto"
           value={me.tenant_id ?? ""}
           onChange={async (e) => {
             try {
@@ -115,13 +123,13 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
           ))}
         </select>
         <input
-          className="w-40 rounded-lg border px-2 py-1.5 text-sm"
+          className="inp w-36"
           placeholder="새 학원 이름"
           value={newAcademy}
           onChange={(e) => setNewAcademy(e.target.value)}
         />
         <button
-          className="rounded-lg border px-3 py-1.5 text-sm"
+          className="btn-ghost whitespace-nowrap !px-3 !py-1.5 text-xs"
           onClick={async () => {
             try {
               const t = await createTenant(newAcademy);
@@ -139,7 +147,7 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
       {me.tenant_id && me.role === "owner" && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
-            className="rounded-lg border px-3 py-1 text-xs"
+            className="btn-ghost !px-3 !py-1 text-xs"
             onClick={async () => {
               try {
                 const inv = await createInvite(me.tenant_id!, "teacher");
@@ -152,7 +160,7 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
             교사 초대
           </button>
           <button
-            className="rounded-lg border px-3 py-1 text-xs"
+            className="btn-ghost !px-3 !py-1 text-xs"
             onClick={async () => {
               try {
                 const inv = await createInvite(me.tenant_id!, "reviewer");
@@ -164,18 +172,20 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
           >
             검토자 초대
           </button>
-          {inviteOut && <code className="text-xs text-gray-600">{inviteOut}</code>}
+          {inviteOut && (
+            <code className="glass-soft rounded-lg px-2 py-1 text-xs text-cyan-200">{inviteOut}</code>
+          )}
         </div>
       )}
       <div className="mt-2 flex items-center gap-2">
         <input
-          className="w-48 rounded-lg border px-2 py-1 text-xs"
+          className="inp w-44 !py-1 text-xs"
           placeholder="초대 코드"
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value)}
         />
         <button
-          className="rounded-lg border px-3 py-1 text-xs"
+          className="btn-ghost whitespace-nowrap !px-3 !py-1 text-xs"
           onClick={async () => {
             try {
               await acceptInvite(inviteCode);
@@ -189,7 +199,7 @@ export default function AcademyBar({ onChanged }: { onChanged?: () => void }) {
           초대 수락
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="alert-red mt-2 px-3 py-1.5 text-xs">{error}</p>}
     </div>
   );
 }

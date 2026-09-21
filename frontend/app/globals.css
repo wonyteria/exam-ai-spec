@@ -1,26 +1,222 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ------------------------------------------------------------------ */
+/* Spatial dark stage: deep field + aurora depth blobs + faint grid    */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --ink: #e9edf6;
+  --ink-dim: #9aa4bb;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: #060a13;
 }
+
+/* aurora depth blobs */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(58rem 38rem at 12% -8%, rgba(99, 102, 241, 0.32), transparent 62%),
+    radial-gradient(46rem 34rem at 88% 6%, rgba(34, 211, 238, 0.2), transparent 60%),
+    radial-gradient(66rem 48rem at 50% 112%, rgba(168, 85, 247, 0.18), transparent 62%),
+    #060a13;
+}
+
+/* faint spatial grid fading toward the edges */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 25%, transparent 78%);
+}
+
+::selection {
+  background: rgba(129, 140, 248, 0.4);
+}
+
+/* ------------------------------------------------------------------ */
+/* Glass surfaces                                                      */
+/* ------------------------------------------------------------------ */
+
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow:
+    0 12px 40px rgba(2, 6, 23, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.glass-soft {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.glass-pop {
+  background: linear-gradient(165deg, rgba(30, 36, 56, 0.92), rgba(14, 18, 32, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.lift {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 18px 56px rgba(2, 6, 23, 0.6),
+    0 0 0 1px rgba(129, 140, 248, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+
+.btn-primary {
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.55);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.4; }
+
+.btn-ghost {
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.btn-ghost:disabled { opacity: 0.4; }
+
+.btn-danger {
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #f43f5e, #fb7185);
+  box-shadow: 0 6px 24px rgba(244, 63, 94, 0.35);
+}
+.btn-danger:disabled { opacity: 0.4; }
+
+.inp {
+  width: 100%;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--ink);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.inp::placeholder { color: rgba(154, 164, 187, 0.6); }
+.inp:focus {
+  outline: none;
+  border-color: rgba(129, 140, 248, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
+}
+.inp:disabled { opacity: 0.45; }
+select.inp option { color: #111827; }
+
+input[type="checkbox"].inp-check {
+  accent-color: #818cf8;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Status chips (translucent tints on glass)                           */
+/* ------------------------------------------------------------------ */
+
+.chip {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.chip-green  { background: rgba(52, 211, 153, 0.14);  color: #6ee7b7; border-color: rgba(52, 211, 153, 0.3); }
+.chip-amber  { background: rgba(251, 191, 36, 0.14);  color: #fcd34d; border-color: rgba(251, 191, 36, 0.3); }
+.chip-red    { background: rgba(251, 113, 133, 0.14); color: #fda4af; border-color: rgba(251, 113, 133, 0.3); }
+.chip-blue   { background: rgba(96, 165, 250, 0.14);  color: #93c5fd; border-color: rgba(96, 165, 250, 0.3); }
+.chip-gray   { background: rgba(148, 163, 184, 0.12); color: #94a3b8; border-color: rgba(148, 163, 184, 0.25); }
+
+/* ------------------------------------------------------------------ */
+/* Alert surfaces                                                      */
+/* ------------------------------------------------------------------ */
+
+.alert-red {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(244, 63, 94, 0.1);
+  color: #fecdd3;
+  backdrop-filter: blur(8px);
+}
+.alert-amber {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.09);
+  color: #fde68a;
+  backdrop-filter: blur(8px);
+}
+.alert-green {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.1);
+  color: #a7f3d0;
+  backdrop-filter: blur(8px);
+}
+.alert-blue {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(59, 130, 246, 0.1);
+  color: #bfdbfe;
+  backdrop-filter: blur(8px);
+}
+
+.text-dim { color: var(--ink-dim); }

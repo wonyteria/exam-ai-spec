@@ -20,6 +20,7 @@ import {
   SourceManifestInfo,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
+import Chrome from "@/components/Chrome";
 
 interface LogicFlagGroup {
   question_number: number;
@@ -42,9 +43,9 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  UNVERIFIED: { label: "미검증", cls: "bg-amber-100 text-amber-800" },
-  CONFLICT: { label: "충돌", cls: "bg-red-100 text-red-800" },
-  UNREADABLE: { label: "판독 불가", cls: "bg-red-100 text-red-800" },
+  UNVERIFIED: { label: "미검증", cls: "chip-amber" },
+  CONFLICT: { label: "충돌", cls: "chip-red" },
+  UNREADABLE: { label: "판독 불가", cls: "chip-red" },
 };
 
 const STATUS_FILTERS = ["ALL", "CONFLICT", "UNVERIFIED", "UNREADABLE"] as const;
@@ -139,7 +140,7 @@ export default function ReviewPage() {
   const resolve = async (atuId: string) => {
     if (resolving[atuId]) return;
     const value = values[atuId];
-    if (value === undefined) return;
+    if (value === undefined || !value.trim()) return;
     setResolving((r) => ({ ...r, [atuId]: true }));
     try {
       await resolveItem(id, atuId, value);
@@ -156,6 +157,8 @@ export default function ReviewPage() {
             ?.focus(),
         );
       }
+    } catch (e) {
+      setError(`확정 실패: ${String(e)}`);
     } finally {
       setResolving((r) => ({ ...r, [atuId]: false }));
     }
@@ -277,19 +280,20 @@ export default function ReviewPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
+    <main className="mx-auto max-w-4xl p-8 pt-20">
+      <Chrome title="예외 검토" />
       <header className="mb-6">
         <h1 className="text-2xl font-bold">예외 검토</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          판단 불가 항목만 확인합니다 — 전체 검수는 필요 없습니다
+        <p className="mt-1 text-sm text-dim">
+          판단 불가 항목만 확인합니다
         </p>
         {loaded && pending > 0 && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+            <span className="chip chip-amber !px-3 !py-1 !text-sm">
               {pending}건 대기
             </span>
             {resolvedCount > 0 && (
-              <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+              <span className="chip chip-green !px-3 !py-1 !text-sm">
                 {resolvedCount}건 확정
               </span>
             )}
@@ -308,10 +312,10 @@ export default function ReviewPage() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setStatusFilter(f)}
-                className={`rounded-full border px-3 py-1 text-sm ${
+                className={`rounded-full px-3 py-1 text-sm transition ${
                   active
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    ? "bg-gradient-to-r from-indigo-500 to-cyan-500 font-medium text-white"
+                    : "glass-soft text-white/70 hover:bg-white/10"
                 }`}
               >
                 {FILTER_LABEL[f]} {n}
@@ -322,44 +326,40 @@ export default function ReviewPage() {
       )}
 
       {allEligible.length > 1 && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+        <div className="alert-blue mb-4 flex items-center gap-3 p-3">
           <button
             onClick={() => bulkResolve(allEligible, "ALL")}
             disabled={bulkKey !== null}
-            className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary"
           >
             {bulkKey === "ALL"
               ? "채택 중…"
               : `일치 후보 전체 채택 (${allEligible.length}건)`}
           </button>
-          <span className="text-xs text-blue-800">
-            후보가 하나로 일치하는 항목만 한 번에 확정합니다 — 충돌 항목은 제외되며 개별 확인이 필요합니다
+          <span className="text-xs opacity-80">
+            후보가 하나로 일치하는 항목만 — 충돌 항목은 개별 확인이 필요합니다
           </span>
         </div>
       )}
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
+        <p className="alert-red mb-4 p-4">
           {error}
         </p>
       )}
 
       {renumberMsg && (
-        <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <p className="alert-red mb-4 p-3 text-sm">
           {renumberMsg}
         </p>
       )}
 
       {pages.length > 0 && (
-        <section className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
+        <section className="glass mb-6 rounded-2xl p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold">페이지 순서</h2>
             <span
-              className={`rounded px-2 py-0.5 text-xs ${
-                manifest?.confirmed_by
-                  ? "bg-green-100 text-green-800"
-                  : "bg-amber-100 text-amber-800"
-              }`}
+              className={`chip ${manifest?.confirmed_by ? "chip-green" : "chip-amber"}`}
             >
               {manifest?.confirmed_by ? "확정됨" : "미확정"}
             </span>
@@ -368,20 +368,20 @@ export default function ReviewPage() {
             {pages.map((p, i) => (
               <li
                 key={p.source_page_id ?? i}
-                className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm"
+                className="glass-soft flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm"
               >
-                <span className="w-6 text-gray-400">{i + 1}</span>
+                <span className="w-6 text-white/40">{i + 1}</span>
                 <span className="flex-1 truncate">
                   {p.original_name ?? p.source_page_id}
                   {p.pdf_page_index !== null && (
-                    <span className="ml-1 text-xs text-gray-500">
+                    <span className="ml-1 text-xs text-white/40">
                       (PDF {p.pdf_page_index + 1}p)
                     </span>
                   )}
                 </span>
                 {p.uncertain_regions.length > 0 && (
                   <span
-                    className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700"
+                    className="chip chip-amber"
                     title="인쇄 겹침으로 보류된 영역 — 원본 대조 필요"
                   >
                     보류 {p.uncertain_regions.length}
@@ -390,7 +390,7 @@ export default function ReviewPage() {
                 <button
                   onClick={() => movePage(i, -1)}
                   disabled={i === 0}
-                  className="rounded border px-2 py-0.5 text-xs disabled:opacity-30"
+                  className="btn-ghost !px-2 !py-0.5 text-xs"
                   aria-label="위로"
                 >
                   ↑
@@ -398,7 +398,7 @@ export default function ReviewPage() {
                 <button
                   onClick={() => movePage(i, 1)}
                   disabled={i === pages.length - 1}
-                  className="rounded border px-2 py-0.5 text-xs disabled:opacity-30"
+                  className="btn-ghost !px-2 !py-0.5 text-xs"
                   aria-label="아래로"
                 >
                   ↓
@@ -409,21 +409,21 @@ export default function ReviewPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={confirmOrder}
-              className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+              className="btn-primary"
             >
               순서 확정
             </button>
-            {orderMsg && <span className="text-sm text-gray-600">{orderMsg}</span>}
+            {orderMsg && <span className="text-sm text-white/60">{orderMsg}</span>}
           </div>
         </section>
       )}
 
       {missingNumbers.length > 0 && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4">
-          <span className="font-semibold text-red-800">
+        <div className="alert-red mb-4 p-4">
+          <span className="font-semibold">
             인쇄 번호 누락: {missingNumbers.join(", ")}번
           </span>
-          <p className="text-sm text-red-700">
+          <p className="mt-1 text-sm opacity-80">
             {unresolvedLabels.length > 0
               ? "일부는 ? 라벨 문항으로 보존되었습니다 — 각 카드에서 실제 번호를 확정해 주세요"
               : "문항이 통째로 인식되지 않았습니다 — 원본 이미지를 확인해 주세요"}
@@ -432,45 +432,45 @@ export default function ReviewPage() {
       )}
 
       {missingNumbers.length === 0 && unresolvedLabels.length > 0 && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <span className="font-semibold text-amber-800">
+        <div className="alert-amber mb-4 p-4">
+          <span className="font-semibold">
             번호 미확정 문항: {unresolvedLabels.join(", ")}
           </span>
-          <p className="text-sm text-amber-700">
+          <p className="mt-1 text-sm opacity-80">
             채점 표시 등으로 인쇄 번호가 가려진 문항입니다 — 각 카드에서 실제 번호를 확정해 주세요
           </p>
         </div>
       )}
 
       {loaded && pending === 0 && issues.length === 0 && !error && (
-        <p className="rounded-lg border border-green-300 bg-green-50 p-4 text-green-800">
-          확인할 항목이 없습니다. 내보내기로 진행할 수 있습니다.
+        <p className="alert-green p-4">
+          확인할 항목이 없습니다. 보내기로 진행할 수 있습니다.
         </p>
       )}
 
       {issues.length > 0 && (
-        <section className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4">
-          <h2 className="mb-2 font-semibold text-red-800">
-            열린 이슈 {issues.length}건 — 최종보내기를 차단합니다
+        <section className="alert-red mb-6 p-4">
+          <h2 className="mb-2 font-semibold">
+            열린 이슈 {issues.length}건 — 보내기를 차단합니다
           </h2>
           <ul className="space-y-2">
             {issues.map((iss) => (
-              <li key={iss.id} className="rounded border bg-white p-3 text-sm">
+              <li key={iss.id} className="glass-soft rounded-xl p-3 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                  <span className={`chip ${iss.blocking ? "chip-red" : "chip-amber"}`}>
                     {iss.blocking ? "차단" : "경고"}
                   </span>
-                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                  <span className="chip chip-gray">
                     {iss.kind}
                   </span>
                   {iss.severity !== "info" && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-white/50">
                       심각도 {iss.severity}
                     </span>
                   )}
                 </div>
                 {iss.reason && (
-                  <p className="mt-1.5 text-gray-700">{iss.reason}</p>
+                  <p className="mt-1.5 text-white/80">{iss.reason}</p>
                 )}
               </li>
             ))}
@@ -483,11 +483,11 @@ export default function ReviewPage() {
         return (
           <section
             key={g.key}
-            className="mb-4 rounded-lg border bg-white shadow-sm"
+            className="glass mb-4 rounded-2xl"
           >
-            <div className="flex flex-wrap items-center gap-2 border-b bg-gray-50 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-2.5">
               <span className="font-semibold">{g.key}번 문항</span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-white/40">
                 {g.items.length}건
               </span>
               {(() => {
@@ -500,7 +500,7 @@ export default function ReviewPage() {
                     {qcrop && (
                       <button
                         type="button"
-                        className="text-xs text-blue-600 underline"
+                        className="text-xs text-cyan-300 underline"
                         onClick={() => setCropOpen(qcrop)}
                       >
                         문항 전체 보기
@@ -509,7 +509,7 @@ export default function ReviewPage() {
                     {eligible.length > 0 && (
                       <button
                         type="button"
-                        className="rounded bg-blue-600 px-2.5 py-0.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="btn-primary !px-2.5 !py-0.5 text-xs"
                         disabled={bulkKey !== null}
                         onClick={() => bulkResolve(g.items, g.key)}
                       >
@@ -523,9 +523,9 @@ export default function ReviewPage() {
               })()}
               {ambiguous && (
                 <span className="ml-auto flex items-center gap-2 text-sm">
-                  <span className="text-amber-800">인쇄 번호 미확정</span>
+                  <span className="text-amber-300">인쇄 번호 미확정</span>
                   <input
-                    className="w-20 rounded border px-2 py-1 text-sm"
+                    className="inp !w-20 !py-1"
                     placeholder="번호"
                     inputMode="numeric"
                     value={renumberValues[g.key] ?? ""}
@@ -540,7 +540,7 @@ export default function ReviewPage() {
                   <button
                     onClick={() => renumber(g.key)}
                     disabled={Boolean(renumbering[g.key])}
-                    className="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
+                    className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
                   >
                     {renumbering[g.key] ? "확정 중…" : "번호 확정"}
                   </button>
@@ -551,34 +551,31 @@ export default function ReviewPage() {
             {g.items.map((item) => {
               const status = STATUS_LABEL[item.status] ?? {
                 label: item.status,
-                cls: "bg-gray-100 text-gray-700",
+                cls: "chip-gray",
               };
               const crop = cropUrl(id, item.source);
               return (
-                <div key={item.atu_id} className="border-b p-4 last:border-b-0">
+                <div key={item.atu_id} className="border-b border-white/8 p-4 last:border-b-0">
                   <div className="mb-3 flex items-center gap-2 text-sm">
-                    <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+                    <span className="chip chip-gray">
                       {KIND_LABEL[item.kind] ?? item.kind}
                     </span>
-                    <span className={`rounded px-2 py-0.5 ${status.cls}`}>
+                    <span className={`chip ${status.cls}`}>
                       {status.label}
                     </span>
                   </div>
 
                   {crop && (
                     <div className="mb-3">
-                      <p className="mb-1 text-xs font-medium text-gray-500">
-                        원본 영역
-                      </p>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={crop}
                         alt="원본 영역"
                         loading="lazy"
-                        className="max-h-64 rounded border bg-gray-50 object-contain"
+                        className="max-h-64 rounded-xl border border-white/15 bg-white/5 object-contain"
                       />
                       <button
-                        className="mt-2 rounded border px-2 py-1 text-xs"
+                        className="btn-ghost mt-2 !px-2 !py-1 text-xs"
                         onClick={() => setCropOpen(crop)}
                       >
                         원본 비교 확대
@@ -588,17 +585,17 @@ export default function ReviewPage() {
 
                   {item.candidates.length > 0 && (
                     <div className="mb-3 space-y-1 text-sm">
-                      <p className="text-xs font-medium text-gray-500">
+                      <p className="text-xs font-medium text-white/40">
                         OCR 후보 — 클릭하면 입력됩니다
                       </p>
                       {item.candidates.map((c, i) => (
                         <div key={i} className="flex items-baseline gap-2">
-                          <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+                          <span className="chip chip-blue shrink-0">
                             {c.provider}
                           </span>
                           <button
                             type="button"
-                            className="break-all rounded px-1 text-left text-gray-700 hover:bg-blue-50 hover:text-blue-800"
+                            className="break-all rounded px-1 text-left text-white/80 hover:bg-indigo-400/20 hover:text-white"
                             title="이 값을 확정 값으로 사용"
                             onClick={() =>
                               setValues((v) => ({
@@ -620,7 +617,7 @@ export default function ReviewPage() {
                   <div className="flex gap-2">
                     <input
                       data-atu-input={item.atu_id}
-                      className="flex-1 rounded border px-3 py-1.5 text-sm"
+                      className="inp flex-1"
                       placeholder="확정 값 입력"
                       value={values[item.atu_id] ?? ""}
                       onChange={(e) =>
@@ -636,7 +633,7 @@ export default function ReviewPage() {
                     <button
                       onClick={() => resolve(item.atu_id)}
                       disabled={Boolean(resolving[item.atu_id])}
-                      className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+                      className="btn-primary"
                     >
                       {resolving[item.atu_id] ? "확정 중…" : "확정"}
                     </button>
@@ -664,10 +661,10 @@ export default function ReviewPage() {
                   role="tab"
                   aria-selected={cropLayer === layer}
                   onClick={() => setCropLayer(layer)}
-                  className={`rounded-full border px-3 py-1 text-xs ${
+                  className={`rounded-full px-3 py-1 text-xs transition ${
                     cropLayer === layer
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-gray-300 bg-white text-gray-600"
+                      ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white"
+                      : "glass-soft text-white/60"
                   }`}
                 >
                   {layer === "original" ? "원본(필기 포함)" : "복원된 인쇄 레이어"}
@@ -678,7 +675,7 @@ export default function ReviewPage() {
             <img
               src={`${cropOpen}&source=${cropLayer}`}
               alt="원본 비교 확대"
-              className="max-h-[70vh] w-full rounded border object-contain"
+              className="max-h-[70vh] w-full rounded-xl border border-white/15 object-contain"
             />
           </>
         )}
@@ -687,12 +684,12 @@ export default function ReviewPage() {
       {flags.map((g) => (
         <div
           key={g.question_number}
-          className="mb-2 rounded-lg border border-amber-300 bg-amber-50 p-4"
+          className="alert-amber mb-2 p-4"
         >
           <span className="font-semibold">
             {g.question_label ?? g.question_number}번 문항
           </span>
-          <ul className="ml-4 list-disc text-sm text-amber-900">
+          <ul className="ml-4 list-disc text-sm opacity-90">
             {g.flags.map((f, i) => (
               <li key={i}>
                 {f.kind} — {f.detail}
@@ -705,15 +702,15 @@ export default function ReviewPage() {
       <div className="mt-8 flex gap-3">
         <Link
           href={`/documents/${id}/editor`}
-          className="rounded-lg border px-4 py-2 text-sm"
+          className="btn-ghost"
         >
           에디터로
         </Link>
         <Link
           href={`/documents/${id}/export`}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+          className="btn-primary"
         >
-          내보내기
+          보내기
         </Link>
       </div>
     </main>

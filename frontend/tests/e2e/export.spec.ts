@@ -39,7 +39,7 @@ const ELIGIBILITY_BASE = {
         { check_kind: "LAYOUT_STYLE_BOUNDS", state: "NOT_RUN" },
       ],
       final_eligible: false,
-      artifacts: [],
+      artifacts: [] as { id: string; state: string; sha256: string }[],
     },
     hwp: { checks: [], final_eligible: false, artifacts: [] },
     pdf: { checks: [], final_eligible: false, artifacts: [] },
@@ -50,7 +50,9 @@ async function seed(
   page: import("@playwright/test").Page,
   captured: { artifacts: Record<string, unknown>[]; exports: Record<string, unknown>[] },
   eligibility: typeof ELIGIBILITY_BASE = ELIGIBILITY_BASE,
+  afterCreate?: (e: typeof ELIGIBILITY_BASE) => typeof ELIGIBILITY_BASE,
 ) {
+  let artifactCalls = 0;
   await page.addInitScript(() => {
     localStorage.setItem("examdna_dev_user", "teacher1");
     localStorage.setItem("examdna_tenant", "tn_1");
@@ -65,16 +67,21 @@ async function seed(
   await page.route(
     `**/api/v1/tenants/tn_1/documents/${DOC}/eligibility`,
     async (route) => {
+      // After an artifact is created the server re-proves and the next
+      // eligibility read can report FINAL_ELIGIBLE artifacts.
+      const e =
+        artifactCalls > 0 && afterCreate ? afterCreate(eligibility) : eligibility;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ data: eligibility }),
+        body: JSON.stringify({ data: e }),
       });
     },
   );
   await page.route(
     `**/api/v1/tenants/tn_1/documents/${DOC}/artifacts`,
     async (route) => {
+      artifactCalls += 1;
       captured.artifacts.push(route.request().postDataJSON());
       await route.fulfill({
         status: 200,
@@ -149,14 +156,23 @@ test.describe("export page", () => {
     expect(captured.exports).toHaveLength(0);
   });
 
-  test("final export promotes a proven artifact via canonical exports", async ({
+  test("final export promotes the FINAL_ELIGIBLE artifact, not a fresh draft", async ({
     page,
   }) => {
     const elig = structuredClone(ELIGIBILITY_BASE);
     elig.content_ready = true;
     elig.formats.hwpx.final_eligible = true;
     const captured = { artifacts: [] as Record<string, unknown>[], exports: [] as Record<string, unknown>[] };
-    await seed(page, captured, elig);
+    // The freshly created artifact is DRAFT — the UI must re-read
+    // eligibility and promote the artifact the server proved
+    // FINAL_ELIGIBLE instead of sending the draft id.
+    await seed(page, captured, elig, (e) => {
+      const next = structuredClone(e);
+      next.formats.hwpx.artifacts = [
+        { id: "art_final1", state: "FINAL_ELIGIBLE", sha256: "cd".repeat(32) },
+      ];
+      return next;
+    });
     await page.goto(`/documents/${DOC}/export`);
 
     await expect(page.getByText("콘텐츠 검증 완료")).toBeVisible();
@@ -170,9 +186,26 @@ test.describe("export page", () => {
       .toBe(1);
     expect(captured.exports[0]).toMatchObject({
       revision_id: "rev_9",
-      artifact_ids: ["art_1"],
+      artifact_ids: ["art_final1"],
     });
     await expect(page.getByText("HWPX 최종본 다운로드")).toBeVisible();
+  });
+
+  test("final export fails closed when no FINAL_ELIGIBLE artifact appears", async ({
+    page,
+  }) => {
+    const elig = structuredClone(ELIGIBILITY_BASE);
+    elig.content_ready = true;
+    elig.formats.hwpx.final_eligible = true;
+    const captured = { artifacts: [] as Record<string, unknown>[], exports: [] as Record<string, unknown>[] };
+    await seed(page, captured, elig); // eligibility never gains a FINAL_ELIGIBLE artifact
+    await page.goto(`/documents/${DOC}/export`);
+
+    const row = page.locator('[data-format="hwpx"]');
+    await row.getByRole("button", { name: "최종 export" }).click();
+
+    await expect(page.getByText(/최종 조건을 충족한 아티팩트가 없습니다/)).toBeVisible();
+    expect(captured.exports).toHaveLength(0);
   });
 
   test("blocking issues link back to review", async ({ page }) => {
