@@ -537,3 +537,212 @@ def test_resolve_atu_number_collision_fails_closed(service, cstore):
         )
     assert ei.value.code == "NUMBER_EXISTS"
     assert cstore.get_document(d.id).head_revision_id == rev.id
+
+
+# --- APPROVED_EDIT_CONFORMANCE lineage audit --------------------------------
+
+
+def test_edit_conformance_passes_clean_lineage(service, cstore):
+    doc, rev = _setup(service)
+    rev2 = service.apply(
+        "tn_1", "alice", doc.id, rev.id,
+        [ChangeOp(op="SetPoints", target_id="1", value=5)],
+        route="edits",
+    )
+    state, summary = service._run_one(
+        "APPROVED_EDIT_CONFORMANCE", _content(cstore, rev2), rev2
+    )
+    assert state == CheckState.PASSED
+    assert "revisions audited" in summary
+
+
+def test_edit_conformance_flags_unrecorded_mutation(service, cstore):
+    """An EDIT revision with no recorded change set is an unapproved
+    mutation — the lineage audit must fail closed."""
+    doc, rev = _setup(service)
+    rev2 = service.apply(
+        "tn_1", "alice", doc.id, rev.id,
+        [ChangeOp(op="SetPoints", target_id="1", value=5)],
+        route="edits",
+    )
+    rev2.change_summary = []
+    state, _ = service._run_one(
+        "APPROVED_EDIT_CONFORMANCE", _content(cstore, rev2), rev2
+    )
+    assert state == CheckState.FAILED
+
+
+def test_edit_conformance_flags_tampered_snapshot(service, cstore):
+    doc, rev = _setup(service)
+    rev2 = service.apply(
+        "tn_1", "alice", doc.id, rev.id,
+        [ChangeOp(op="SetPoints", target_id="1", value=5)],
+        route="edits",
+    )
+    rev2.content_hash = "0" * 64  # forged hash on an EDIT revision
+    state, summary = service._run_one(
+        "APPROVED_EDIT_CONFORMANCE", _content(cstore, rev2), rev2
+    )
+    assert state == CheckState.FAILED
+    assert "hash mismatch" in summary
+
+
+# --- ORIGINAL_SOURCE_FIDELITY audit -------------------------------------------
+
+
+class _AuditOCR:
+    """Fresh audit-run provider — returns canned text per region."""
+
+    def __init__(self, text: str):
+        self._text = text
+        self.calls = 0
+
+    def recognize_text(self, image, region=None):
+        self.calls += 1
+        from document.models import Candidate
+
+        return [Candidate(provider="audit", value=self._text)]
+
+
+class _Objects:
+    def __init__(self, path):
+        self._path = path
+
+    def open(self, uri):
+        return self._path
+
+
+def _doc_with_source(tmp_path, atu_status=None) -> Document:
+    from document.models import BBox, Page, PageImage, SourceRef
+
+    img = tmp_path / "p0.png"
+    img.write_bytes(b"png")
+    d = Document(tenant_id="tn_1")
+    d.pages.append(Page(index=0, original=PageImage(uri=str(img))))
+    body_atu = ATU(
+        kind=ATUKind.TEXT_TOKEN, field="body",
+        value="직각삼각형의 합동 조건을 고르시오",
+        status=atu_status or VerificationStatus.AUTO_VERIFIED,
+    )
+    q = Question(
+        number=1,
+        label="1",
+        body=[TextSpan(
+            text="직각삼각형의 합동 조건을 고르시오", atu_ids=[body_atu.id]
+        )],
+        source=SourceRef(page=0, bbox=BBox(x=0, y=0, w=100, h=50)),
+        atus=[body_atu],
+    )
+    d.questions.append(q)
+    return d
+
+
+class _Providers:
+    def __init__(self, ocr):
+        self.ocr = ocr
+
+
+def test_source_fidelity_passes_on_fresh_audit(service, tmp_path):
+    d = _doc_with_source(tmp_path)
+    rev = service.create_revision(d, "tn_1", "alice")
+    providers = _Providers([_AuditOCR("1. 직각삼각형의 합동 조건을 고르시오")])
+    state, summary = service._run_one(
+        "ORIGINAL_SOURCE_FIDELITY", d, rev, providers, _Objects(tmp_path / "p0.png")
+    )
+    assert state == CheckState.PASSED, summary
+
+
+def test_source_fidelity_fails_on_machine_field_absent(service, tmp_path):
+    """AUTO_VERIFIED extraction contradicted by a fresh audit run fails."""
+    d = _doc_with_source(tmp_path)  # AUTO_VERIFIED body ATU
+    rev = service.create_revision(d, "tn_1", "alice")
+    providers = _Providers([_AuditOCR("1. 완전히 다른 문제입니다")])
+    state, summary = service._run_one(
+        "ORIGINAL_SOURCE_FIDELITY", d, rev, providers, _Objects(tmp_path / "p0.png")
+    )
+    assert state == CheckState.FAILED
+    assert "machine-extracted" in summary
+
+
+def test_source_fidelity_attested_field_is_not_failure(service, tmp_path):
+    """A HUMAN_VERIFIED value absent from source pixels (e.g. occluded
+    print confirmed by a reviewer) is an attested exception, not a fail."""
+    d = _doc_with_source(tmp_path, atu_status=VerificationStatus.HUMAN_VERIFIED)
+    rev = service.create_revision(d, "tn_1", "alice")
+    providers = _Providers([_AuditOCR("1. 감춰진 원본 텍스트")])
+    state, summary = service._run_one(
+        "ORIGINAL_SOURCE_FIDELITY", d, rev, providers, _Objects(tmp_path / "p0.png")
+    )
+    assert state == CheckState.PASSED, summary
+    assert "human-attested" in summary
+
+
+def test_source_fidelity_not_run_without_provider(service, tmp_path):
+    d = _doc_with_source(tmp_path)
+    rev = service.create_revision(d, "tn_1", "alice")
+    state, _ = service._run_one(
+        "ORIGINAL_SOURCE_FIDELITY", d, rev, _Providers([]), _Objects(tmp_path / "p0.png")
+    )
+    assert state == CheckState.NOT_RUN
+
+
+def test_source_fidelity_fails_when_nothing_materialized(service, tmp_path):
+    d = _doc_with_source(tmp_path)
+    d.questions[0].body = []
+    d.questions[0].label = "?mark1"  # non-digit label is not audited
+    rev = service.create_revision(d, "tn_1", "alice")
+    providers = _Providers([_AuditOCR("anything")])
+    state, summary = service._run_one(
+        "ORIGINAL_SOURCE_FIDELITY", d, rev, providers, _Objects(tmp_path / "p0.png")
+    )
+    assert state == CheckState.FAILED
+    assert "no materialized fields" in summary
+
+
+# --- REQUIRED_CONTENT_COVERAGE / CURRICULUM_COMPLIANCE ------------------------
+
+
+def test_content_coverage_fails_without_answers(service, cstore):
+    d = _doc(tenant="tn_1")  # scored? _doc has answers but no points/solution
+    d.questions[0].points = 3
+    rev = service.create_revision(d, "tn_1", "alice")
+    state, summary = service._run_one("REQUIRED_CONTENT_COVERAGE", d, rev)
+    assert state == CheckState.FAILED
+    assert "solution" in summary
+
+
+def test_content_coverage_passes_fully_covered(service, cstore):
+    from document.models import Solution
+
+    d = _doc(tenant="tn_1")
+    for q in d.questions:
+        q.points = 3
+        q.solution = Solution(steps=[TextSpan(text="풀이")])
+    rev = service.create_revision(d, "tn_1", "alice")
+    state, summary = service._run_one("REQUIRED_CONTENT_COVERAGE", d, rev)
+    assert state == CheckState.PASSED, summary
+
+
+def test_curriculum_flags_undeclared_concept(service, cstore):
+    from document.models import Curriculum, Solution
+
+    d = _doc(tenant="tn_1")
+    q = d.questions[0]
+    q.curriculum = Curriculum(grade="중2", concepts=["합동"])
+    q.solution = Solution(steps=[TextSpan(text="x")], concepts=["삼각비"])
+    rev = service.create_revision(d, "tn_1", "alice")
+    state, summary = service._run_one("CURRICULUM_COMPLIANCE", d, rev)
+    assert state == CheckState.FAILED
+    assert "삼각비" in summary
+
+
+def test_curriculum_passes_with_declared_concepts(service, cstore):
+    from document.models import Curriculum, Solution
+
+    d = _doc(tenant="tn_1")
+    q = d.questions[0]
+    q.curriculum = Curriculum(grade="중2", concepts=["합동", "삼각형"])
+    q.solution = Solution(steps=[TextSpan(text="x")], concepts=["합동"])
+    rev = service.create_revision(d, "tn_1", "alice")
+    state, summary = service._run_one("CURRICULUM_COMPLIANCE", d, rev)
+    assert state == CheckState.PASSED, summary

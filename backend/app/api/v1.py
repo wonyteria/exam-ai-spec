@@ -677,6 +677,7 @@ def v1_run_checks(
     doc_id: str,
     request: Request,
     cstore: CanonicalStore = Depends(get_canonical),
+    objects: LocalObjectStore = Depends(get_object_store),
 ):
     ctx, rec = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
     head = cstore.get_head_revision(doc_id)
@@ -688,7 +689,9 @@ def v1_run_checks(
         providers = default_providers()
     except Exception:
         providers = None  # checks without solver support stay NOT_RUN
-    checks = _service(cstore).run_checks(head.id, providers=providers)
+    checks = _service(cstore).run_checks(
+        head.id, providers=providers, objects=objects
+    )
     return {
         "data": {"checks": [c.model_dump() for c in checks]},
         "request_id": _request_id(),

@@ -117,7 +117,9 @@ def _execute(
             mode=RevisionMode.RESTORE,
             ops_summary=[{"op": "pipeline_restore"}],
         )
-        service.run_checks(rev.id, providers=ctx.providers)
+        service.run_checks(
+            rev.id, providers=ctx.providers, objects=ctx.objects
+        )
 
         # Register rendered outputs as canonical artifacts bound to this
         # revision — proof decides FINAL eligibility; nothing unverified

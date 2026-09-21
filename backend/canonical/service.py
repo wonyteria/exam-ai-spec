@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import time
+from difflib import SequenceMatcher
 from typing import Any, Optional
 
 from document.models import Document, VerificationStatus
@@ -54,6 +56,10 @@ IMPLEMENTED_CHECKERS = {
     "SOURCE_REGION_COVERAGE",
     "MATH_FIGURE_SEMANTIC_CONSISTENCY",
     "BLOCKING_ISSUES_CLOSED",
+    "APPROVED_EDIT_CONFORMANCE",
+    "ORIGINAL_SOURCE_FIDELITY",
+    "REQUIRED_CONTENT_COVERAGE",
+    "CURRICULUM_COMPLIANCE",
 }
 
 # Checks that need a live solver provider (WP04). Without providers they
@@ -72,6 +78,19 @@ _CIRCLED_DIGITS = {
 def _norm_answer(value: Any) -> str:
     s = str(value).strip().rstrip(".")
     return _CIRCLED_DIGITS.get(s, s)
+
+
+def _audit_field_match(field: str, audit_text: str) -> bool:
+    """A materialized field counts as present when it is contained in the
+    audit text, or when >=80% of its characters match somewhere in it —
+    OCR noise tolerance without accepting unrelated text."""
+    if field in audit_text:
+        return True
+    matched = sum(
+        b.size
+        for b in SequenceMatcher(None, field, audit_text).get_matching_blocks()
+    )
+    return matched / max(1, len(field)) >= 0.8
 
 
 def _content_payload(doc: Document, manifest_digest: Optional[str] = None) -> dict:
@@ -980,7 +999,10 @@ class MutationService:
     # -- checks ----------------------------------------------------------------
 
     def run_checks(
-        self, revision_id: str, providers: Optional[Any] = None
+        self,
+        revision_id: str,
+        providers: Optional[Any] = None,
+        objects: Optional[Any] = None,
     ) -> list[CheckRun]:
         """Execute the implemented validators for a revision; unimplemented
         required checks stay NOT_RUN (fail-closed). Solver-backed checks
@@ -1014,7 +1036,9 @@ class MutationService:
                     results.append(kind)
                     continue
             else:
-                state, summary = self._run_one(kind.check_kind, doc, rev)
+                state, summary = self._run_one(
+                    kind.check_kind, doc, rev, providers, objects
+                )
             kind.state = state
             kind.result_summary = summary
             kind.applicable = True
@@ -1050,7 +1074,14 @@ class MutationService:
             self.store.upsert_check(agg)
         return self.store.get_checks(revision_id)
 
-    def _run_one(self, kind: str, doc: Document, rev: Revision) -> tuple[CheckState, str]:
+    def _run_one(
+        self,
+        kind: str,
+        doc: Document,
+        rev: Revision,
+        providers: Optional[Any] = None,
+        objects: Optional[Any] = None,
+    ) -> tuple[CheckState, str]:
         if kind == "SCHEMA_REFERENTIAL_INTEGRITY":
             try:
                 Document.model_validate(rev.content_json)
@@ -1097,7 +1128,250 @@ class MutationService:
             return CheckState.PASSED, "all questions have field evidence"
         if kind == "MATH_FIGURE_SEMANTIC_CONSISTENCY":
             return self._check_math_figure(doc)
+        if kind == "APPROVED_EDIT_CONFORMANCE":
+            # EDIT lineage audit: walk head -> restore baseline. Every
+            # mutation revision must carry its approved change set, and
+            # every stored snapshot must recompute to its recorded
+            # content/style/solution hashes — an unrecorded mutation or
+            # a tampered snapshot fails.
+            chain: list[Revision] = []
+            cur: Optional[Revision] = rev
+            baseline_id = rev.restore_baseline_revision_id
+            seen: set[str] = set()
+            while cur is not None and cur.id not in seen:
+                seen.add(cur.id)
+                chain.append(cur)
+                if (baseline_id and cur.id == baseline_id) or (
+                    cur.parent_revision_id is None
+                ):
+                    break
+                cur = self.store.get_revision(cur.parent_revision_id)
+            problems: list[str] = []
+            for r in chain:
+                if r.mode != RevisionMode.EDIT or r.id == baseline_id:
+                    # The baseline/pipeline snapshot is audited by the
+                    # source-manifest binding, not the edit gate — old
+                    # baselines were minted under older serializers and
+                    # cannot be re-hashed under the current schema.
+                    continue
+                try:
+                    rdoc = Document.model_validate(r.content_json)
+                except Exception as exc:
+                    problems.append(f"rev{r.revision_no} invalid snapshot: {exc}")
+                    continue
+                rmanifest = (
+                    self.store.get_manifest(r.manifest_id)
+                    if r.manifest_id
+                    else None
+                )
+                ch, sh, soh = revision_hashes(
+                    rdoc, rmanifest.digest if rmanifest else None
+                )
+                if (ch, sh, soh) != (
+                    r.content_hash,
+                    r.style_hash,
+                    r.solution_hash,
+                ):
+                    problems.append(f"rev{r.revision_no} hash mismatch")
+                if not r.change_summary:
+                    problems.append(
+                        f"rev{r.revision_no} has no recorded change set"
+                    )
+            if problems:
+                return CheckState.FAILED, "; ".join(problems[:6])
+            return (
+                CheckState.PASSED,
+                f"{len(chain)} revisions audited, hashes consistent",
+            )
+        if kind == "ORIGINAL_SOURCE_FIDELITY":
+            return self._source_fidelity(doc, providers, objects)
+        if kind == "REQUIRED_CONTENT_COVERAGE":
+            from document.models import QuestionType
+
+            # Every scored leaf must carry a verified answer AND solution
+            # plus evidence for equations/figures/answer space — output
+            # modes that hide answers do not exempt content coverage.
+            scored = [q for q in doc.questions if q.points]
+            if not scored:
+                return CheckState.FAILED, "no scored questions"
+            missing: list[str] = []
+            for q in scored:
+                label = q.label or str(q.number)
+                if q.answer is None or q.answer.value is None:
+                    missing.append(f"{label}:answer")
+                if not q.solution or not q.solution.steps:
+                    missing.append(f"{label}:solution")
+                if (
+                    q.type == QuestionType.DESCRIPTIVE
+                    and not q.answer_space_lines
+                ):
+                    missing.append(f"{label}:answer_space")
+                for eq in q.equations:
+                    if not eq.atu_ids and eq.source is None:
+                        missing.append(f"{label}:equation_evidence")
+                for fig in q.figures:
+                    if not fig.atu_ids and fig.source is None:
+                        missing.append(f"{label}:figure_evidence")
+            if missing:
+                return (
+                    CheckState.FAILED,
+                    f"{len(missing)} required fields missing: "
+                    + ", ".join(missing[:8]),
+                )
+            return (
+                CheckState.PASSED,
+                f"{len(scored)} scored leaves fully covered",
+            )
+        if kind == "CURRICULUM_COMPLIANCE":
+            # Declared curriculum policy vs concepts actually used in
+            # solution steps — a concept outside the question's declared
+            # set is a violation. No declared policy and no concept use
+            # is an honestly empty audit, reported as such.
+            checked = 0
+            declared_total = 0
+            violations: list[str] = []
+            for q in doc.questions:
+                label = q.label or str(q.number)
+                allowed = set(q.curriculum.concepts)
+                declared_total += len(allowed)
+                if q.solution:
+                    for c in q.solution.concepts:
+                        checked += 1
+                        if allowed and c not in allowed:
+                            violations.append(f"{label}:{c}")
+            if violations:
+                return (
+                    CheckState.FAILED,
+                    f"{len(violations)} concepts outside declared "
+                    f"curriculum: {', '.join(violations[:8])}",
+                )
+            return (
+                CheckState.PASSED,
+                f"{checked} solution concepts checked against "
+                f"{declared_total} declared",
+            )
         return CheckState.NOT_RUN, "no validator implemented"
+
+    # -- source fidelity audit ---------------------------------------------------
+
+    @staticmethod
+    def _norm_audit(s: str) -> str:
+        return re.sub(r"\s+", "", str(s or ""))
+
+    def _source_fidelity(
+        self, doc: Document, providers: Optional[Any], objects: Optional[Any]
+    ) -> tuple[CheckState, str]:
+        """Independent source audit (02_ARCHITECTURE_CONTRACTS §7.1): a
+        FRESH OCR run over each question's original source region — not
+        the extraction-time response — compared against the materialized
+        canonical fields that would ship. Nothing materialized or no
+        audit provider means the check honestly cannot run."""
+        auditors = [
+            p
+            for p in getattr(providers, "ocr", []) or []
+            if hasattr(p, "recognize_text")
+            and not str(getattr(p, "name", "")).startswith("stub")
+        ]
+        if not auditors or objects is None:
+            return (
+                CheckState.NOT_RUN,
+                "no OCR audit provider or object store",
+            )
+        auditor = auditors[0]
+        compared = 0
+        unaudited = 0
+        unattested_misses: list[str] = []
+        attested_misses = 0
+        for q in doc.questions:
+            label = q.label or str(q.number)
+            atu_by_id = {a.id: a for a in q.atus}
+
+            def attested(atu_ids, cmp_text: str) -> bool:
+                """Human-attested fields are outside the audit's scope —
+                it verifies *machine* extraction fidelity. A field is
+                machine-claimed only when an AUTO_VERIFIED ATU backs the
+                exact current value; a human-verified ATU, a missing ATU
+                (recorded human edit), or a value that diverges from the
+                machine consensus all mean a human authored it."""
+                refs = [atu_by_id[i] for i in (atu_ids or []) if i in atu_by_id]
+                if not refs:
+                    return True
+                for a in refs:
+                    same = self._norm_audit(a.value) == cmp_text
+                    if a.status == VerificationStatus.HUMAN_VERIFIED and same:
+                        return True
+                    if a.status == VerificationStatus.AUTO_VERIFIED and same:
+                        return False
+                return True
+
+            fields: list[tuple[str, bool]] = []
+            for s in q.body:
+                t = self._norm_audit(s.text)
+                if len(t) >= 4:
+                    fields.append((t, attested(s.atu_ids, t)))
+            for c in q.choices:
+                t = self._norm_audit(" ".join(x.text for x in c.body))
+                if len(t) >= 2:
+                    ids = [i for s in c.body for i in s.atu_ids]
+                    fields.append((t, attested(ids, t)))
+            if str(label).isdigit():
+                num_atu = [a.id for a in q.atus if a.field == "number"]
+                fields.append(
+                    (f"{label}.", attested(num_atu, str(label)))
+                )
+            if q.points:
+                pts_atu = [a.id for a in q.atus if a.field == "points"]
+                fields.append(
+                    (f"{q.points}점", attested(pts_atu, str(q.points)))
+                )
+            if not fields:
+                unaudited += 1
+                continue
+            if q.source is None or q.source.page >= len(doc.pages):
+                unaudited += 1
+                continue
+            page = doc.pages[q.source.page]
+            try:
+                img = objects.open(page.original.uri)
+                cands = auditor.recognize_text(img, q.source.bbox)
+            except Exception:
+                unaudited += 1
+                continue
+            audit_text = self._norm_audit(
+                " ".join(str(c.value) for c in cands if c.value)
+            )
+            if not audit_text:
+                unaudited += 1
+                continue
+            compared += 1
+            for f, ok_attested in fields:
+                if not _audit_field_match(f, audit_text):
+                    if ok_attested:
+                        attested_misses += 1
+                    else:
+                        unattested_misses.append(f"{label}: {f[:30]}")
+        if compared == 0:
+            return (
+                CheckState.FAILED,
+                "no materialized fields could be audited against source",
+            )
+        if unattested_misses:
+            return (
+                CheckState.FAILED,
+                f"{len(unattested_misses)} machine-extracted fields absent "
+                f"from source audit: " + "; ".join(unattested_misses[:5]),
+            )
+        return (
+            CheckState.PASSED,
+            f"{compared} questions audited against original source "
+            f"({unaudited} without materialized content"
+            + (
+                f", {attested_misses} human-attested fields not in source pixels"
+                if attested_misses
+                else ""
+            )
+            + ")",
+        )
 
     @staticmethod
     def _check_math_figure(doc: Document) -> tuple[CheckState, str]:
