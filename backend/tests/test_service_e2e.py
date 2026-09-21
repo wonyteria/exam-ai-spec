@@ -79,6 +79,11 @@ def test_upload_worker_revision_review_items(env):
     job = client.get(f"/api/jobs/{job_id}", headers=h).json()
     assert job["state"] in {"COMPLETED", "NEEDS_REVIEW"}, job
 
+    # Tenant-scoped job listing surfaces the job for the library view.
+    listing = client.get("/api/jobs", headers=h)
+    assert listing.status_code == 200, listing.text
+    assert [j["id"] for j in listing.json()["jobs"]] == [job_id]
+
     revs = client.get(
         f"/api/v1/tenants/{tenant_id}/documents/{doc_id}/revisions", headers=h
     ).json()["data"]["revisions"]

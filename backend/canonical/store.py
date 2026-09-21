@@ -889,6 +889,15 @@ class CanonicalStore:
         row = self._conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         return self._row_to_job(row) if row else None
 
+    def list_jobs(self, tenant_id: str, limit: int = 50) -> list[JobV2]:
+        """Tenant-scoped job listing, newest first — for the library's
+        in-flight work view. Never returns other tenants' jobs."""
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?",
+            (tenant_id, limit),
+        ).fetchall()
+        return [self._row_to_job(r) for r in rows]
+
     def claim_job(
         self, worker: str, kinds: Optional[list[str]] = None, lease_seconds: float = LEASE_SECONDS
     ) -> Optional[JobV2]:

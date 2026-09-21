@@ -7,8 +7,10 @@ import AcademyBar from "@/components/AcademyBar";
 import Modal from "@/components/Modal";
 import {
   listDocuments,
+  listJobs,
   uploadFiles,
   type DocumentSummary,
+  type JobSummary,
 } from "@/lib/api";
 
 export default function UploadPage() {
@@ -19,6 +21,7 @@ export default function UploadPage() {
     null,
   );
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [queue, setQueue] = useState<{ name: string; status: string }[]>([]);
   const [offline, setOffline] = useState(false);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
@@ -48,6 +51,11 @@ export default function UploadPage() {
       setDocs(await listDocuments());
     } catch {
       setDocs([]); // no active tenant yet — library stays empty
+    }
+    try {
+      setJobs(await listJobs());
+    } catch {
+      setJobs([]);
     }
   }, []);
 
@@ -187,6 +195,47 @@ export default function UploadPage() {
       >
         외부 학원 HWP/HWPX 브랜드 변경 →
       </Link>
+
+      {jobs.filter((j) =>
+        !["COMPLETED", "FAILED", "CANCELLED"].includes(j.state),
+      ).length > 0 && (
+        <div className="w-full max-w-2xl">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+            진행 중·검토 대기 작업
+          </h2>
+          <ul className="divide-y rounded-xl border border-gray-200 bg-white">
+            {jobs
+              .filter(
+                (j) => !["COMPLETED", "FAILED", "CANCELLED"].includes(j.state),
+              )
+              .map((j) => (
+                <li key={j.id}>
+                  <Link
+                    href={
+                      j.state === "NEEDS_REVIEW"
+                        ? `/documents/${j.document_id}/review`
+                        : `/jobs/${j.id}?doc=${j.document_id}`
+                    }
+                    className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50"
+                  >
+                    <span className="text-gray-600">
+                      작업 {j.id.slice(0, 12)}…
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        j.state === "NEEDS_REVIEW"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {j.state === "NEEDS_REVIEW" ? "검토 필요" : "처리 중"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {docs.length > 0 && (
         <div className="w-full max-w-2xl">

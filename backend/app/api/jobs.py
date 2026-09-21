@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from canonical.models import JobV2, JobV2State
 from canonical.store import CanonicalStore
-from tenancy.auth import AuthContext, require_auth
+from tenancy.auth import AuthContext, require_auth, require_tenant
 from tenancy.db import TenancyDB
 from tenancy.models import ROLE_ACTIONS
 
@@ -83,6 +83,30 @@ def _event_payload(cstore: CanonicalStore, job_id: str) -> list[dict]:
         }
         for e in cstore.events_since(job_id, 0)
     ]
+
+
+@router.get("")
+def list_jobs(
+    request: Request,
+    ctx: AuthContext = Depends(require_tenant),
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Tenant-scoped job list, newest first — lets the library surface
+    in-flight uploads so a closed tab doesn't orphan a long OCR job."""
+    jobs = cstore.list_jobs(ctx.tenant_id)
+    return {
+        "jobs": [
+            {
+                "id": j.id,
+                "document_id": j.document_id,
+                "state": _STATE_MAP.get(j.state, j.state.value),
+                "kind": j.kind,
+                "created_at": j.created_at,
+                "error": j.last_error,
+            }
+            for j in jobs
+        ]
+    }
 
 
 @router.get("/{job_id}")

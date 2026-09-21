@@ -209,6 +209,21 @@ export async function getJob(jobId: string): Promise<Job> {
   return res.json();
 }
 
+export interface JobSummary {
+  id: string;
+  document_id: string;
+  state: string;
+  kind: string;
+  created_at: number;
+  error?: string | null;
+}
+
+export async function listJobs(): Promise<JobSummary[]> {
+  const res = await apiFetch("/api/jobs", { cache: "no-store" });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).jobs;
+}
+
 export interface ReviewItemsResponse {
   items: ReviewItem[];
   logic_flags: {

@@ -428,6 +428,7 @@ export default function ReviewPage() {
                       <img
                         src={crop}
                         alt="원본 영역"
+                        loading="lazy"
                         className="max-h-64 rounded border bg-gray-50 object-contain"
                       />
                       <button
