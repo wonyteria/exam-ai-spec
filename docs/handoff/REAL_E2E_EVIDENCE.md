@@ -195,3 +195,27 @@ derived field it backs (q.body/choices/equations/figures/points/label).
 Previously review resolution only set the ATU status, so rendered
 artifacts and the completeness check saw empty questions forever — the
 real document was unreleasable no matter how much review was done.
+
+## Bulk review + Hancom COM fix (rev 33, doc_8dc95bea7fcb)
+
+- Found Hancom regression on this build: Open/SaveAs require the
+  explicit (path, format, options) triple — bare calls fail with
+  DISP_E_BADPARAMCOUNT. Worker helpers _hwp_open/_hwp_saveas now try the
+  explicit form first; verified end-to-end over HTTP (all four
+  round-trip steps True, hwp artifact checks 9/9 PASSED including
+  hwpilot binary readback).
+- run_hwp_proof and the v1 artifact route now treat COM failure as
+  NOT_RUN/503 instead of crashing the pipeline job — a proof that
+  cannot run is absent evidence, not a fatal error.
+- Review queue driven through the new bulk-accept path: 105
+  agreed-candidate ATUs resolved via 27 atomic /changes revisions
+  (ResolveATU materializes into body/choices/points/labels). 22 items
+  remain that genuinely need human judgment: 18 CONFLICT (OCR
+  disagreement) + 4 blocked by a masked-label collision + 2 `?`-labeled
+  questions (printed numbers 10/16 masked by grading marks).
+- Check state after bulk resolution: completeness now fails only on
+  the two masked numbers; coverage fails on 52 answer/solution fields —
+  the resolved points ATUs correctly expanded the scored set, so more
+  questions now require answers (honest, expected).
+- New SetSolution canonical op + editor quick-edit card give the
+  human path for answers/solutions that no OCR can supply.
