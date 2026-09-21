@@ -218,18 +218,47 @@ test("wp09 full journey with contract assertions", async ({ page }) => {
     hits.push("GET /api/documents/doc_1/preview");
     await route.fulfill({ status: 200, contentType: "text/html", body: "<html><body>preview</body></html>" });
   });
-  await page.route("**/api/documents/doc_1/exports", async (route) => {
-    hits.push("POST /api/documents/doc_1/exports");
-    const body = route.request().postDataJSON() as { format: string; output_mode: string };
-    expect(body.output_mode).toBe("TEACHER");
+  await page.route("**/api/v1/tenants/tn_1/documents/doc_1/eligibility", async (route) => {
+    hits.push("GET /api/v1/tenants/tn_1/documents/doc_1/eligibility");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ file: "exam.pdf", url: "/api/documents/doc_1/files/exam.pdf" }),
+      body: JSON.stringify({
+        data: {
+          document_id: "doc_1",
+          revision_id: "rev_2",
+          revision_no: 2,
+          mode: "EDIT",
+          content_ready: false,
+          content_checks: [],
+          blocking_issues: [],
+          formats: {
+            hwpx: { checks: [], final_eligible: false, artifacts: [] },
+            hwp: { checks: [], final_eligible: false, artifacts: [] },
+            pdf: { checks: [], final_eligible: false, artifacts: [] },
+          },
+        },
+      }),
     });
   });
-  await page.route("**/api/documents/doc_1/files/exam.pdf", async (route) => {
-    hits.push("GET /api/documents/doc_1/files/exam.pdf");
+  await page.route("**/api/v1/tenants/tn_1/documents/doc_1/artifacts", async (route) => {
+    hits.push("POST /api/v1/tenants/tn_1/documents/doc_1/artifacts");
+    const body = route.request().postDataJSON() as { format: string; output_mode: string; revision_id: string };
+    expect(body.output_mode).toBe("TEACHER");
+    expect(body.revision_id).toBe("rev_2");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          artifact: { id: "art_1", format: body.format, artifact_sha256: "ab".repeat(32), state: "DRAFT" },
+          proof: null,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/artifacts/art_1/download**", async (route) => {
+    hits.push("GET /api/v1/artifacts/art_1/download");
     await route.fulfill({
       status: 200,
       headers: {
@@ -272,8 +301,11 @@ test("wp09 full journey with contract assertions", async ({ page }) => {
   await page.getByRole("button", { name: "Redo" }).click();
   await page.goto("/documents/doc_1/export");
   await page.locator("select").selectOption("TEACHER");
-  await page.getByRole("button", { name: "PDF" }).click();
-  const downloadLink = page.getByRole("link", { name: "exam.pdf 다운로드" });
+  await page
+    .locator('[data-format="pdf"]')
+    .getByRole("button", { name: "초안" })
+    .click();
+  const downloadLink = page.getByRole("link", { name: "PDF 초안 (DRAFT) 다운로드" });
   await expect(downloadLink).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await downloadLink.click();
@@ -283,7 +315,7 @@ test("wp09 full journey with contract assertions", async ({ page }) => {
   expect(hits).toContain("POST /api/uploads");
   expect(hits).toContain("POST /api/documents/doc_1/review-items/atu_1");
   expect(hits).toContain("POST /api/documents/doc_1/edits");
-  expect(hits).toContain("POST /api/documents/doc_1/exports");
+  expect(hits).toContain("POST /api/v1/tenants/tn_1/documents/doc_1/artifacts");
 });
 
 test("wp09 error-status recovery messages", async ({ page, context }) => {
@@ -311,9 +343,32 @@ test("wp09 error-status recovery messages", async ({ page, context }) => {
   await page.getByRole("button", { name: "승인 후 적용" }).click();
   await expect(page.getByRole("dialog", { name: "충돌 감지" })).toBeVisible();
 
-  await page.route("**/api/documents/doc_1/exports", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { error: { code: "HWP_WORKER_UNAVAILABLE", message: "unavailable" } } }) }));
+  await page.route("**/api/v1/tenants/tn_1/documents/doc_1/eligibility", (r) => r.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      data: {
+        document_id: "doc_1",
+        revision_id: "rev_2",
+        revision_no: 2,
+        mode: "EDIT",
+        content_ready: false,
+        content_checks: [],
+        blocking_issues: [],
+        formats: {
+          hwpx: { checks: [], final_eligible: false, artifacts: [] },
+          hwp: { checks: [], final_eligible: false, artifacts: [] },
+          pdf: { checks: [], final_eligible: false, artifacts: [] },
+        },
+      },
+    }),
+  }));
+  await page.route("**/api/v1/tenants/tn_1/documents/doc_1/artifacts", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { error: { code: "HWP_WORKER_UNAVAILABLE", message: "unavailable" } } }) }));
   await page.goto("/documents/doc_1/export");
-  await page.getByRole("button", { name: "hwp", exact: true }).click();
+  await page
+    .locator('[data-format="hwp"]')
+    .getByRole("button", { name: "초안" })
+    .click();
   await expect(page.getByText("HWP_WORKER_UNAVAILABLE")).toBeVisible();
 
   await page.goto("/");

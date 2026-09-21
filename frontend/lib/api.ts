@@ -432,6 +432,106 @@ export async function composeExam(
   return (await res.json()).data;
 }
 
+export interface ContentCheck {
+  check_kind: string;
+  state: string;
+  applicable: boolean;
+  stale_reason: string | null;
+  method: string;
+  result_summary: string;
+}
+
+export interface FormatEligibility {
+  checks: { check_kind: string; state: string }[];
+  final_eligible: boolean;
+  artifacts: { id: string; state: string; sha256: string }[];
+}
+
+export interface Eligibility {
+  document_id: string;
+  revision_id: string;
+  revision_no: number;
+  mode: string;
+  content_ready: boolean;
+  content_checks: ContentCheck[];
+  blocking_issues: Record<string, unknown>[];
+  formats: Record<string, FormatEligibility>;
+}
+
+export async function getEligibility(
+  tenantId: string,
+  docId: string,
+): Promise<Eligibility> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/eligibility`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export async function runChecks(
+  tenantId: string,
+  docId: string,
+): Promise<ContentCheck[]> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/checks/run`,
+    { method: "POST" },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data.checks;
+}
+
+export interface CreatedArtifact {
+  id: string;
+  format: string;
+  artifact_sha256: string;
+  state: string;
+}
+
+export async function createArtifact(
+  tenantId: string,
+  docId: string,
+  body: { revision_id: string; format: string; output_mode: string },
+): Promise<CreatedArtifact> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/artifacts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data.artifact;
+}
+
+export interface FinalExportResult {
+  artifacts: { id: string; format: string; sha256: string; download_url: string }[];
+}
+
+export async function exportFinal(
+  tenantId: string,
+  docId: string,
+  revisionId: string,
+  artifactIds: string[],
+): Promise<FinalExportResult> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/exports`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: revisionId, artifact_ids: artifactIds }),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data;
+}
+
+export function artifactDownloadUrl(artifactId: string, purpose: "draft" | "final"): string {
+  return `${API}/api/v1/artifacts/${artifactId}/download?purpose=${purpose}`;
+}
+
 export async function exportDoc(
   docId: string,
   format: string,
