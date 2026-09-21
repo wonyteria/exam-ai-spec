@@ -72,6 +72,7 @@ export default function ReviewPage() {
   const [orderMsg, setOrderMsg] = useState<string | null>(null);
   const [resolving, setResolving] = useState<Record<string, boolean>>({});
   const [cropOpen, setCropOpen] = useState<string | null>(null);
+  const [cropLayer, setCropLayer] = useState<"original" | "clean">("original");
   const [renumberValues, setRenumberValues] = useState<Record<string, string>>({});
   const [renumbering, setRenumbering] = useState<Record<string, boolean>>({});
   const [renumberMsg, setRenumberMsg] = useState<string | null>(null);
@@ -501,11 +502,37 @@ export default function ReviewPage() {
       <Modal
         title="원본 비교"
         open={Boolean(cropOpen)}
-        onClose={() => setCropOpen(null)}
+        onClose={() => {
+          setCropOpen(null);
+          setCropLayer("original");
+        }}
       >
         {cropOpen && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cropOpen} alt="원본 비교 확대" className="max-h-[70vh] w-full rounded border object-contain" />
+          <>
+            <div className="mb-2 flex gap-1.5" role="tablist">
+              {(["original", "clean"] as const).map((layer) => (
+                <button
+                  key={layer}
+                  role="tab"
+                  aria-selected={cropLayer === layer}
+                  onClick={() => setCropLayer(layer)}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    cropLayer === layer
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-gray-300 bg-white text-gray-600"
+                  }`}
+                >
+                  {layer === "original" ? "원본(필기 포함)" : "복원된 인쇄 레이어"}
+                </button>
+              ))}
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${cropOpen}&source=${cropLayer}`}
+              alt="원본 비교 확대"
+              className="max-h-[70vh] w-full rounded border object-contain"
+            />
+          </>
         )}
       </Modal>
 
