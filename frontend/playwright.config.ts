@@ -15,7 +15,7 @@ export default defineConfig({
     cwd: __dirname,
     url: "http://localhost:3000",
     timeout: 120_000,
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
   },
   projects: [
     {
