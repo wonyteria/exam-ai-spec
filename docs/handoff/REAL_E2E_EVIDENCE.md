@@ -96,3 +96,31 @@ review items -> eligibility -> draft artifact download.
 Regression: `backend/tests/test_service_e2e.py` runs the same path through
 TestClient with mock providers (upload -> intercepted worker spawn -> real
 `run_once` -> NEEDS_REVIEW -> review items -> `content_ready=false`).
+
+## Masked-number confirmation (reviewer renumber path)
+
+Exercised over real HTTP against the persisted service_e2e document
+(`doc_8dc95bea7fcb`, 31 questions, three masked anchors):
+
+| action | result |
+|---|---|
+| `SetField number ?6 -> 16` (unique `?` label) | 200, new revision, label becomes "16" |
+| `SetField number ?mark1 -> 4` (label shared by two questions on legacy data) | **409 AMBIGUOUS_TARGET** — refused rather than editing the wrong question |
+| `SetField number q_b7550f31899b -> 4` (page-3 masked anchor, by id) | 200 |
+| `SetField number q_82393f7950d8 -> 10` (page-1 masked anchor, by id) | 200 |
+| post-confirmation read model | labels 4/10/16 present, `missing_numbers` recomputed to `[]`, `unresolved_labels` `[]` |
+
+Defects found by this verification and fixed in 5ad82a2:
+
+- `SetField number` originally wrote the positional `number` field
+  (dense 1..N sequence), so every real confirmation collided
+  (NUMBER_EXISTS). It now confirms the printed number via `label`;
+  positional ordering is untouched.
+- `?`-labels were deduplicated per page — "?mark1" occurred twice in
+  one document, making the label unresolvable. Ambiguous labels are
+  now unique document-wide in `segmenter.py`.
+- `missing_numbers` was a static pipeline snapshot; review-items now
+  recomputes it from current labels and reports `unresolved_labels`.
+
+Frontend: `renumberQuestion()` in `lib/api.ts` (revisions -> head ->
+If-Match CAS) + inline "번호 확정" control on `?`-labeled review cards.
