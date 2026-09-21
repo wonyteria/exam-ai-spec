@@ -31,7 +31,7 @@ const ELIGIBILITY_BASE = {
       result_summary: "",
     },
   ],
-  blocking_issues: [],
+  blocking_issues: [] as Record<string, unknown>[],
   formats: {
     hwpx: {
       checks: [

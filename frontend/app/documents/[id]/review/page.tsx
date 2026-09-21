@@ -6,10 +6,12 @@ import { useEffect, useState } from "react";
 import {
   activeTenant,
   API,
+  applyChanges,
   CanonicalIssue,
   confirmPageOrder,
   DocPage,
   getDocPages,
+  getHeadRevisionForTenant,
   getIssues,
   getReviewItems,
   renumberQuestion,
@@ -60,6 +62,18 @@ function cropUrl(docId: string, source: ReviewItem["source"]): string | null {
   return `${API}/api/documents/${docId}/crops/${source.page}?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}`;
 }
 
+/** The one value every candidate agrees on, or null when candidates
+ * disagree / are absent — disagreement is never bulk-accepted. */
+function agreedValue(item: ReviewItem): string | null {
+  const vals = new Set(
+    item.candidates
+      .map((c) => c.value)
+      .filter((v) => v !== null && v !== undefined && v !== "")
+      .map((v) => (typeof v === "string" ? v : JSON.stringify(v))),
+  );
+  return vals.size === 1 ? [...vals][0] : null;
+}
+
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -81,6 +95,7 @@ export default function ReviewPage() {
   const [renumberMsg, setRenumberMsg] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [resolvedCount, setResolvedCount] = useState(0);
+  const [bulkKey, setBulkKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +161,50 @@ export default function ReviewPage() {
     }
   };
 
+  /** Accept every agreed-candidate item in `targets` as one canonical
+   * mutation (one revision) — still a HUMAN decision, just batched.
+   * Items whose candidates disagree are never touched. */
+  const bulkResolve = async (targets: ReviewItem[], key: string) => {
+    const eligible = targets.filter((i) => agreedValue(i) !== null);
+    if (!eligible.length || bulkKey) return;
+    setBulkKey(key);
+    setError(null);
+    try {
+      const tenant = activeTenant();
+      const head = tenant ? await getHeadRevisionForTenant(tenant, id) : null;
+      if (tenant && head?.id) {
+        await applyChanges(
+          tenant,
+          id,
+          eligible.map((i) => ({
+            op: "ResolveATU",
+            target_id: i.atu_id,
+            value: agreedValue(i),
+          })),
+          head.id,
+        );
+      } else {
+        for (const i of eligible) {
+          await resolveItem(id, i.atu_id, agreedValue(i)!);
+        }
+      }
+      const done = new Set(eligible.map((i) => i.atu_id));
+      setItems((prev) => prev.filter((i) => !done.has(i.atu_id)));
+      setResolvedCount((n) => n + eligible.length);
+      if (tenant) {
+        try {
+          setIssues(await getIssues(tenant, id));
+        } catch {
+          /* issue refresh best-effort */
+        }
+      }
+    } catch (e) {
+      setError(`일괄 채택 실패: ${String(e)}`);
+    } finally {
+      setBulkKey(null);
+    }
+  };
+
   // Confirm a masked-anchor question's real number — canonical SetField
   // mutation, then refetch so every card shows the confirmed label.
   const renumber = async (label: string) => {
@@ -202,6 +261,7 @@ export default function ReviewPage() {
     statusFilter === "ALL"
       ? items
       : items.filter((i) => i.status === statusFilter);
+  const allEligible = filtered.filter((i) => agreedValue(i) !== null);
   const statusCounts = items.reduce<Record<string, number>>((acc, i) => {
     acc[i.status] = (acc[i.status] ?? 0) + 1;
     return acc;
@@ -258,6 +318,23 @@ export default function ReviewPage() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {allEligible.length > 1 && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <button
+            onClick={() => bulkResolve(allEligible, "ALL")}
+            disabled={bulkKey !== null}
+            className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {bulkKey === "ALL"
+              ? "채택 중…"
+              : `일치 후보 전체 채택 (${allEligible.length}건)`}
+          </button>
+          <span className="text-xs text-blue-800">
+            후보가 하나로 일치하는 항목만 한 번에 확정합니다 — 충돌 항목은 제외되며 개별 확인이 필요합니다
+          </span>
         </div>
       )}
 
@@ -417,15 +494,32 @@ export default function ReviewPage() {
                 const qsrc = g.items.find((i) => i.question_source?.bbox)
                   ?.question_source;
                 const qcrop = qsrc ? cropUrl(id, qsrc) : null;
-                return qcrop ? (
-                  <button
-                    type="button"
-                    className="text-xs text-blue-600 underline"
-                    onClick={() => setCropOpen(qcrop)}
-                  >
-                    문항 전체 보기
-                  </button>
-                ) : null;
+                const eligible = g.items.filter((i) => agreedValue(i) !== null);
+                return (
+                  <>
+                    {qcrop && (
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 underline"
+                        onClick={() => setCropOpen(qcrop)}
+                      >
+                        문항 전체 보기
+                      </button>
+                    )}
+                    {eligible.length > 0 && (
+                      <button
+                        type="button"
+                        className="rounded bg-blue-600 px-2.5 py-0.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                        disabled={bulkKey !== null}
+                        onClick={() => bulkResolve(g.items, g.key)}
+                      >
+                        {bulkKey === g.key
+                          ? "채택 중…"
+                          : `일치 후보 ${eligible.length}건 채택`}
+                      </button>
+                    )}
+                  </>
+                );
               })()}
               {ambiguous && (
                 <span className="ml-auto flex items-center gap-2 text-sm">

@@ -37,6 +37,24 @@ const REVIEW_BODY = {
       source: null,
       candidates: [],
     },
+    {
+      atu_id: "atu_4",
+      question_number: 7,
+      question_label: "7",
+      kind: "text_token",
+      status: "UNVERIFIED",
+      source: null,
+      candidates: [{ provider: "paddle", value: "일치 본문" }],
+    },
+    {
+      atu_id: "atu_5",
+      question_number: 7,
+      question_label: "7",
+      kind: "points",
+      status: "UNVERIFIED",
+      source: null,
+      candidates: [{ provider: "paddle", value: "4" }],
+    },
   ],
   logic_flags: [],
   gate: null,
@@ -92,6 +110,18 @@ async function seed(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true, revisioned: true }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/v1/tenants/tn_1/documents/${DOC}`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { head_revision: { id: "rev_2" } },
+        }),
       });
     },
   );
@@ -161,6 +191,33 @@ test.describe("review page", () => {
     await expect
       .poll(() => captured.resolved, { timeout: 10_000 })
       .toContain("atu_1");
+  });
+
+  test("bulk-accept applies agreed candidates as one canonical change", async ({
+    page,
+  }) => {
+    const captured = { changes: [] as Record<string, unknown>[], resolved: [] as string[] };
+    await seed(page, captured);
+    await page.goto(`/documents/${DOC}/review`);
+
+    // Question 7 has two single-candidate items — one group click sends
+    // both ResolveATU ops in a single If-Match'd /changes call. The
+    // conflicting/empty items in other groups are never touched.
+    const group = page.locator("section", { hasText: "7번 문항" });
+    await group
+      .getByRole("button", { name: "일치 후보 2건 채택" })
+      .click();
+
+    await expect
+      .poll(() => captured.changes.length, { timeout: 10_000 })
+      .toBe(1);
+    expect(captured.changes[0].ifMatch).toBe("rev_2");
+    expect(captured.changes[0].ops).toEqual([
+      { op: "ResolveATU", target_id: "atu_4", value: "일치 본문" },
+      { op: "ResolveATU", target_id: "atu_5", value: "4" },
+    ]);
+    await expect(page.getByText("7번 문항")).not.toBeVisible();
+    await expect(page.getByText("?mark1번 문항")).toBeVisible();
   });
 
   test("status filter narrows the list", async ({ page }) => {
