@@ -93,63 +93,85 @@ def _audit_field_match(field: str, audit_text: str) -> bool:
     return matched / max(1, len(field)) >= 0.8
 
 
-def _content_payload(doc: Document, manifest_digest: Optional[str] = None) -> dict:
+_CONTENT_Q_EXCLUDE = frozenset({"answer", "solution", "verification"})
+
+
+def _content_payload(content: dict, manifest_digest: Optional[str] = None) -> dict:
     """Meaning-bearing content: questions minus answers/solutions, plus
     metadata scope fields and the source page manifest (02: content_hash
-    covers the source manifest, so a page reorder changes content_hash)."""
+    covers the source manifest, so a page reorder changes content_hash).
+
+    Operates on the stored content dict — the exact representation that
+    was hashed at write time. Re-validating into models before hashing
+    would inject serializer defaults (e.g. generated figure ids) and
+    produce a digest over a different representation than the one that
+    was recorded."""
+    meta = content.get("metadata") or {}
     return {
         "metadata": {
-            "subject": doc.metadata.subject,
-            "grade": doc.metadata.grade,
-            "school": doc.metadata.school,
-            "year": doc.metadata.year,
-            "semester": doc.metadata.semester,
-            "exam_type": doc.metadata.exam_type,
+            "subject": meta.get("subject"),
+            "grade": meta.get("grade"),
+            "school": meta.get("school"),
+            "year": meta.get("year"),
+            "semester": meta.get("semester"),
+            "exam_type": meta.get("exam_type"),
         },
         "manifest_digest": manifest_digest,
-        "pages": [p.model_dump() for p in doc.pages],
+        "pages": content.get("pages") or [],
         "questions": [
-            q.model_dump(exclude={"answer", "solution", "verification"})
-            for q in doc.questions
+            {k: v for k, v in q.items() if k not in _CONTENT_Q_EXCLUDE}
+            for q in content.get("questions") or []
         ],
     }
 
 
-def _solution_payload(doc: Document) -> dict:
+def _solution_payload(content: dict) -> dict:
     return {
         "answers": [
             {
-                "q": q.id,
-                "answer": q.answer.model_dump() if q.answer else None,
-                "solution": q.solution.model_dump() if q.solution else None,
-                "curriculum": q.curriculum.model_dump(),
+                "q": q.get("id"),
+                "answer": q.get("answer"),
+                "solution": q.get("solution"),
+                "curriculum": q.get("curriculum"),
             }
-            for q in doc.questions
+            for q in content.get("questions") or []
         ]
     }
 
 
-def _style_payload(doc: Document) -> dict:
+def _style_payload(content: dict) -> dict:
+    meta = content.get("metadata") or {}
     return {
-        "brand_id": doc.brand_id,
-        "template_id": doc.template_id,
+        "brand_id": content.get("brand_id"),
+        "template_id": content.get("template_id"),
         "display_metadata": {
-            "title": doc.metadata.title,
-            "school": doc.metadata.school,
-            "year": doc.metadata.year,
-            "semester": doc.metadata.semester,
-            "exam_type": doc.metadata.exam_type,
+            "title": meta.get("title"),
+            "school": meta.get("school"),
+            "year": meta.get("year"),
+            "semester": meta.get("semester"),
+            "exam_type": meta.get("exam_type"),
         },
     }
 
 
 def revision_hashes(
-    doc: Document, manifest_digest: Optional[str] = None
+    content: dict, manifest_digest: Optional[str] = None
 ) -> tuple[str, str, str]:
     return (
-        sha256_json(_content_payload(doc, manifest_digest)),
-        sha256_json(_style_payload(doc)),
-        sha256_json(_solution_payload(doc)),
+        sha256_json(_content_payload(content, manifest_digest)),
+        sha256_json(_style_payload(content)),
+        sha256_json(_solution_payload(content)),
+    )
+
+
+def _stored_content(doc: Document) -> dict:
+    """The canonical stored form of a document: a JSON-mode dump passed
+    through model validation so raw dicts assigned via SetField become
+    typed sub-models with their defaults populated. Writers must hash
+    and store THIS dict — never a live model that may hold unvalidated
+    field values."""
+    return Document.model_validate(doc.model_dump(mode="json")).model_dump(
+        mode="json"
     )
 
 
@@ -184,8 +206,9 @@ class MutationService:
             manifest_id = parent.manifest_id
         manifest = self.store.get_manifest(manifest_id) if manifest_id else None
         self._normalize_math(doc)
+        content = _stored_content(doc)
         c_hash, s_hash, sol_hash = revision_hashes(
-            doc, manifest.digest if manifest else None
+            content, manifest.digest if manifest else None
         )
         rev = Revision(
             document_id=doc.id,
@@ -200,7 +223,7 @@ class MutationService:
                 "brand_id": doc.brand_id,
                 "template_id": doc.template_id,
             },
-            content_json=doc.model_dump(),
+            content_json=content,
             content_hash=c_hash,
             style_hash=s_hash,
             solution_hash=sol_hash,
@@ -288,8 +311,9 @@ class MutationService:
         head_manifest = (
             self.store.get_manifest(head.manifest_id) if head.manifest_id else None
         )
+        pre = _stored_content(doc)
         c_hash, s_hash, sol_hash = revision_hashes(
-            doc, head_manifest.digest if head_manifest else None
+            pre, head_manifest.digest if head_manifest else None
         )
         if (c_hash, s_hash, sol_hash) == (
             head.content_hash,
@@ -302,8 +326,11 @@ class MutationService:
 
         # An intentional edit discards prior final status: VERIFIED_FINAL
         # and past answers must be re-earned by the post-edit checks.
+        # The flip does not enter any hash payload, but it must land in
+        # the stored snapshot — so content is dumped after it.
         if doc.verification.status == "VERIFIED_FINAL":
             doc.verification.status = "NEEDS_REVIEW"
+        content = _stored_content(doc)
         rev = Revision(
             document_id=doc_id,
             revision_no=head.revision_no + 1,
@@ -318,7 +345,7 @@ class MutationService:
                 "brand_id": doc.brand_id,
                 "template_id": doc.template_id,
             },
-            content_json=doc.model_dump(),
+            content_json=content,
             content_hash=c_hash,
             style_hash=s_hash,
             solution_hash=sol_hash,
@@ -389,8 +416,9 @@ class MutationService:
             if target.manifest_id
             else None
         )
+        content = _stored_content(doc)
         c_hash, s_hash, sol_hash = revision_hashes(
-            doc, target_manifest.digest if target_manifest else None
+            content, target_manifest.digest if target_manifest else None
         )
         rev = Revision(
             document_id=doc_id,
@@ -404,7 +432,7 @@ class MutationService:
                 "brand_id": doc.brand_id,
                 "template_id": doc.template_id,
             },
-            content_json=doc.model_dump(),
+            content_json=content,
             content_hash=c_hash,
             style_hash=s_hash,
             solution_hash=sol_hash,
@@ -1174,7 +1202,7 @@ class MutationService:
                     # cannot be re-hashed under the current schema.
                     continue
                 try:
-                    rdoc = Document.model_validate(r.content_json)
+                    Document.model_validate(r.content_json)
                 except Exception as exc:
                     problems.append(f"rev{r.revision_no} invalid snapshot: {exc}")
                     continue
@@ -1183,8 +1211,11 @@ class MutationService:
                     if r.manifest_id
                     else None
                 )
+                # Hash the stored snapshot as recorded — re-validating it
+                # into models first would inject serializer defaults and
+                # hash a different representation than the one committed.
                 ch, sh, soh = revision_hashes(
-                    rdoc, rmanifest.digest if rmanifest else None
+                    r.content_json, rmanifest.digest if rmanifest else None
                 )
                 if (ch, sh, soh) != (
                     r.content_hash,
