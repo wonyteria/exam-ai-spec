@@ -30,7 +30,9 @@ function JobView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [streamGeneration, setStreamGeneration] = useState(0);
   const [offline, setOffline] = useState(false);
+  const [streamLost, setStreamLost] = useState(false);
   const done = useRef(false);
+  const seenEvents = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -50,14 +52,20 @@ function JobView() {
 
   useEffect(() => {
     const es = new EventSource(`${API}/api/jobs/${id}/events`);
+    es.onopen = () => setStreamLost(false);
+    es.onerror = () => setStreamLost(true);
     es.onmessage = (msg) => {
       const data = JSON.parse(msg.data);
       if (data.done) {
         setState(data.state);
+        setStreamLost(false);
         done.current = true;
         es.close();
         return;
       }
+      const key = `${data.ts}:${data.stage}:${data.message}`;
+      if (seenEvents.current.has(key)) return;
+      seenEvents.current.add(key);
       setEvents((prev) => [...prev, data as JobEvent]);
     };
     return () => es.close();
@@ -119,6 +127,11 @@ function JobView() {
         </div>
       )}
       {offline && <p className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">오프라인 상태입니다.</p>}
+      {streamLost && !finished && (
+        <p className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+          실시간 연결이 끊겼습니다 — 자동으로 재연결합니다
+        </p>
+      )}
       {error && <p className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
       <ol className="space-y-2">
@@ -216,6 +229,7 @@ function JobView() {
               await retryJobV1(tenant, id);
               setState("UPLOADED");
               setEvents([]);
+              seenEvents.current.clear();
               done.current = false;
               setStreamGeneration((generation) => generation + 1);
             } catch (e) {
