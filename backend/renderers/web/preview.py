@@ -43,7 +43,7 @@ def render_preview(
         wide = "" if slot.kind == "objective" else " wide"
         pts = f" <span class='pts'>({q.points}점)</span>" if q.points else ""
         parts.append(
-            f"<div class='q{wide}'><span class='num'>"
+            f"<div class='q{wide}' id='q-{html.escape(q.id)}'><span class='num'>"
             f"{html.escape(slot.label)}.</span>{pts}"
         )
         for span in q.body:

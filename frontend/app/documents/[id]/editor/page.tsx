@@ -21,6 +21,7 @@ export default function EditorPage() {
   const [pendingInstruction, setPendingInstruction] = useState("");
   const [pendingProposal, setPendingProposal] = useState<AgentProposal | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [focusQ, setFocusQ] = useState<string | null>(null);
 
   useEffect(() => {
     const tenant = activeTenant();
@@ -91,13 +92,17 @@ export default function EditorPage() {
       <div className="grid flex-1 grid-cols-1 divide-y md:grid-cols-[1fr_2fr_1fr] md:divide-x md:divide-y-0">
         <aside className="overflow-auto p-4">
           <h2 className="mb-3 font-semibold">문제 목록</h2>
-          <QuestionList key={listKey} docId={id} />
+          <QuestionList
+            key={listKey}
+            docId={id}
+            onSelect={(qid) => setFocusQ(qid)}
+          />
         </aside>
 
         <section className="overflow-auto">
           <iframe
-            key={previewKey}
-            src={`${API}/api/documents/${id}/preview`}
+            key={`${previewKey}-${focusQ ?? ""}`}
+            src={`${API}/api/documents/${id}/preview${focusQ ? `#q-${focusQ}` : ""}`}
             className="h-full w-full"
             title="preview"
           />
@@ -257,9 +262,15 @@ export default function EditorPage() {
   );
 }
 
-function QuestionList({ docId }: { docId: string }) {
+function QuestionList({
+  docId,
+  onSelect,
+}: {
+  docId: string;
+  onSelect?: (questionId: string) => void;
+}) {
   const [questions, setQuestions] = useState<
-    { number: number; label: string; status: string }[]
+    { id: string; number: number; label: string; status: string }[]
   >([]);
 
   useEffect(() => {
@@ -267,7 +278,8 @@ function QuestionList({ docId }: { docId: string }) {
       .then((doc) =>
         setQuestions(
           (doc.questions ?? []).map(
-            (q: { number: number; label?: string | null; verification: { status: string } }) => ({
+            (q: { id: string; number: number; label?: string | null; verification: { status: string } }) => ({
+              id: q.id,
               number: q.number,
               label: q.label ?? `${q.number}`,
               status: q.verification.status,
@@ -283,22 +295,26 @@ function QuestionList({ docId }: { docId: string }) {
   return (
     <ul className="space-y-1 text-sm">
       {questions.map((q) => (
-        <li
-          key={q.number}
-          className="flex items-center justify-between rounded border bg-white px-3 py-2"
-        >
-          <span>{q.label}번</span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-xs ${
-              q.status === "HUMAN_VERIFIED" || q.status === "AUTO_VERIFIED"
-                ? "bg-green-100 text-green-700"
-                : q.status === "UNVERIFIED"
-                  ? "bg-gray-100 text-gray-500"
-                  : "bg-amber-100 text-amber-700"
-            }`}
+        <li key={q.id}>
+          <button
+            type="button"
+            onClick={() => onSelect?.(q.id)}
+            className="flex w-full items-center justify-between rounded border bg-white px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50"
+            title="미리보기에서 이 문항으로 이동"
           >
-            {q.status}
-          </span>
+            <span>{q.label}번</span>
+            <span
+              className={`rounded px-1.5 py-0.5 text-xs ${
+                q.status === "HUMAN_VERIFIED" || q.status === "AUTO_VERIFIED"
+                  ? "bg-green-100 text-green-700"
+                  : q.status === "UNVERIFIED"
+                    ? "bg-gray-100 text-gray-500"
+                    : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {q.status}
+            </span>
+          </button>
         </li>
       ))}
     </ul>
