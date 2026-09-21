@@ -62,6 +62,27 @@ export default function UploadPage() {
   const onFiles = useCallback(
     async (files: FileList | null) => {
       if (!files?.length || busy) return;
+      const ALLOWED = /\.(jpe?g|png|pdf|bmp|webp)$/i;
+      const MAX_BYTES = 50 * 1024 * 1024;
+      const bad = Array.from(files).find(
+        (f) => !ALLOWED.test(f.name) || f.size > MAX_BYTES,
+      );
+      if (files.length > 50) {
+        setError({
+          code: "TOO_MANY_FILES",
+          message: `한 번에 최대 50페이지까지 올릴 수 있습니다 (${files.length}개 선택됨)`,
+        });
+        return;
+      }
+      if (bad) {
+        setError({
+          code: "INVALID_FILE",
+          message: !ALLOWED.test(bad.name)
+            ? `지원하지 않는 형식입니다: ${bad.name} (JPG·PNG·PDF·BMP·WebP만 가능)`
+            : `파일이 너무 큽니다: ${bad.name} (최대 50MB)`,
+        });
+        return;
+      }
       setBusy(true);
       setError(null);
       const entries = Array.from(files).map((f) => ({
