@@ -8,7 +8,7 @@ Math, Status.
 | Name | GitHub | Purpose | ExamDNA Module | Code License | Model License | Dataset License | Commercial | Local | GPU | Korean | Math | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | PaddleOCR | PaddlePaddle/PaddleOCR | 한국어 OCR·layout·formula 후보 | ReadDNA | Apache-2.0 | repo별 확인 필요 | 내장 데이터셋 다수 | 허용(모델별 확인) | O | 권장 | O | △(PP-FormulaNet) | USE_THROUGH_ADAPTER |
-| EasyOCR | JaidedAI/EasyOCR | 독립 OCR 관찰자(CRAFT+CRNN, 한국어) | ReadDNA | Apache-2.0 | Apache-2.0 | 자체 모델 | 코드 Apache-2.0, 가중치는 repo 라이선스 재확인 필요 | O | 권장 | O | — | USE_THROUGH_ADAPTER |
+| EasyOCR | JaidedAI/EasyOCR | 독립 OCR 관찰자(CRAFT+CRNN, 한국어) | ReadDNA | Apache-2.0 (v1.7.2, PyPI·repo LICENSE 확인) | **명시 라이선스 없음** — 가중치는 repo가 아닌 JaidedAI 모델 허브에서 별도 다운로드 | 자체 모델 | **보류** — 코드는 Apache-2.0이나 가중치 조건 미명시, 프로덕션 승격 전 JaidedAI 확인 필요 | O | 권장 | O | — | REVIEW_REQUIRED |
 | OpenCV | opencv/opencv | deskew/CC/geometry | Preprocessing | Apache-2.0 | — | — | 허용 | O | 불필요 | — | — | USE_DIRECTLY |
 | SymPy | sympy/sympy | symbolic 검증·답 대조 | SolveDNA | BSD | — | — | 허용 | O | 불필요 | — | O | USE_DIRECTLY |
 | UniMERNet | opendatalab/UniMERNet | 수식→LaTeX | MathDNA | Apache-2.0 | Apache-2.0 (repo 동일) | UniMER-1M 공개 | 허용 | O | 권장 | △ | O | USE_THROUGH_ADAPTER |

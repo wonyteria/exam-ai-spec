@@ -1,0 +1,55 @@
+{
+  "captured_at": "2026-09-21T10:37:57",
+  "fixture": "simwon_2025_mid2 (5 pages, real photographed exam)",
+  "tenant_id": "tn_2e51812013ab",
+  "document_id": "doc_adad1908aa9e",
+  "job_id": "job_48e09d1d9a7b",
+  "job_state": "NEEDS_REVIEW",
+  "revisions": 2,
+  "issues": 1,
+  "content_ready": false,
+  "content_checks": {
+    "SCHEMA_REFERENTIAL_INTEGRITY": "PASSED",
+    "SOURCE_REGION_COVERAGE": "PASSED",
+    "ORIGINAL_SOURCE_FIDELITY": "NOT_RUN",
+    "QUESTION_CHOICE_SCORE_COMPLETENESS": "FAILED",
+    "MATH_FIGURE_SEMANTIC_CONSISTENCY": "PASSED",
+    "SOLVE_TWO_INDEPENDENT_AGREEMENT": "NOT_RUN",
+    "ANSWER_SOLUTION_LOGIC": "NOT_RUN",
+    "CURRICULUM_COMPLIANCE": "NOT_RUN",
+    "REQUIRED_CONTENT_COVERAGE": "NOT_RUN",
+    "BLOCKING_ISSUES_CLOSED": "FAILED"
+  },
+  "review_items": 124,
+  "missing_numbers": [
+    4,
+    10,
+    16
+  ],
+  "artifacts": [
+    {
+      "id": "art_28cd5971d6ce",
+      "format": "hwpx",
+      "state": "DRAFT",
+      "sha256": "57f2fed0d442d4e691495bbf9ba51adcb428652c584b4bc802075e9adeb487f1"
+    },
+    {
+      "id": "art_d0f2a71b79e1",
+      "format": "hwp",
+      "state": "DRAFT",
+      "sha256": "1d3e3d1d1d842446d1be6a306d86131198d357ffa6add78fd8c69606919be112"
+    },
+    {
+      "id": "art_11477526af60",
+      "format": "pdf",
+      "state": "DRAFT",
+      "sha256": "0a490dcf0650fee00603277ed689805640b2bae2e344428567c8a1804b358be5"
+    }
+  ],
+  "artifact_downloads": {
+    "art_28cd5971d6ce": 6131,
+    "art_d0f2a71b79e1": 29184,
+    "art_11477526af60": 18856
+  },
+  "artifact_download_note": "purpose=draft verified 200 + byte sizes on restarted server (same EXAMDNA_DATA)"
+}

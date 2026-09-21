@@ -51,6 +51,23 @@ def _image_path(uri: str, objects: LocalObjectStore) -> Path:
     return Path(uri)
 
 
+def _read_document(access):
+    """Canonical head revision is the authoritative read model once a
+    canonical record exists; the legacy flat doc is only a fallback.
+    Reads that skipped this would serve pre-mutation content (resolved
+    ATUs still open, edits invisible)."""
+    from document.models import Document
+
+    ctx, doc = access
+    _, head = _canonical_for(doc.id)
+    if head is not None and head.content_json:
+        try:
+            return ctx, Document.model_validate(head.content_json)
+        except Exception:
+            pass
+    return access
+
+
 @router.get("")
 def list_documents(
     request: Request,
@@ -76,7 +93,7 @@ def list_documents(
 
 @router.get("/{doc_id}")
 def get_document(access=Depends(doc_access("read"))):
-    _, doc = access
+    _, doc = _read_document(access)
     return doc
 
 
@@ -87,7 +104,7 @@ def preview(
 ):
     from renderers.plan import OUTPUT_MODES
 
-    _, doc = access
+    _, doc = _read_document(access)
     if output_mode not in OUTPUT_MODES:
         raise HTTPException(400, f"unsupported output_mode {output_mode}")
     return render_preview(doc, output_mode=output_mode)
@@ -112,7 +129,7 @@ def source_crop(
 
     from PIL import Image
 
-    _, doc = access
+    _, doc = _read_document(access)
     if page_index >= len(doc.pages):
         raise HTTPException(404, "page not found")
     page = doc.pages[page_index]
@@ -138,7 +155,7 @@ def source_crop(
 
 @router.get("/{doc_id}/review-items")
 def review_items(access=Depends(doc_access("review"))):
-    _, doc = access
+    _, doc = _read_document(access)
     items = []
     for q in doc.questions:
         for atu in q.atus:
@@ -253,7 +270,7 @@ def edit(
     from core.examdna.editing import apply_ops, ops_to_change_ops, summarize
     from jobs.runner import default_providers
 
-    ctx, doc = access
+    ctx, doc = _read_document(access)
     planner = next(
         (p for p in default_providers().reasoning if hasattr(p, "edit_ops")),
         None,
@@ -327,7 +344,7 @@ def export(
 ):
     from renderers.plan import OUTPUT_MODES
 
-    ctx, doc = access
+    ctx, doc = _read_document(access)
     out = store.export_dir(doc_id)
     fmt = req.format.lower()
     if req.output_mode not in OUTPUT_MODES:

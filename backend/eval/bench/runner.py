@@ -77,16 +77,20 @@ def run_ocr_benchmark(
     rows: list[dict[str, Any]] = []
     for fam in family_ids:
         try:
-            fdir = fixtures.fixture_path(fam)
+            fdirs = fixtures.fixture_dirs(fam)
         except (PermissionError, KeyError) as exc:
             for name in names:
                 eval_report.record(run, f"{fam}::{name}", "NOT_RUN", str(exc))
                 rows.append({"family": fam, "provider": name,
                              "status": "NOT_RUN", "detail": str(exc)})
             continue
-        expected = gold.load_expected(fdir) if fdir.is_dir() else None
+        expected = gold.load_expected(fdirs[0]) if fdirs[0].is_dir() else None
         gold_text = _gold_text(expected) if expected else ""
-        pages = gold.damaged_inputs(fdir) if fdir.is_dir() else [fdir]
+        pages = [
+            page
+            for d in fdirs
+            for page in (gold.damaged_inputs(d) if d.is_dir() else [d])
+        ]
         for name in names:
             item = f"{fam}::{name}"
             try:

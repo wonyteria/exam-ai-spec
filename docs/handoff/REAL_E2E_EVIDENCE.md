@@ -70,3 +70,26 @@ numbers on ONE exam — not a general accuracy claim.
 - Bench metrics not yet computed for this family (expected.json exists for
   golden_001 capture only).
 - HWP/HWPX proof on this document requires the Hancom environment (NOT_RUN here).
+
+## HTTP service E2E (service_e2e_simwon.json)
+
+Full production path exercised over real HTTP — no legacy `run_pipeline`
+shortcut: uvicorn -> `POST /api/tenants` -> `POST /api/uploads` (5 real
+pages, multipart) -> the upload handler's embedded worker
+(`jobs.worker.run_once` inside the server process) -> canonical revision ->
+review items -> eligibility -> draft artifact download.
+
+| step | result |
+|---|---|
+| upload | 200 — job + document + manifest ids |
+| worker (PaddleOCR+EasyOCR env flags) | job `NEEDS_REVIEW` (review handoff, fail-closed) |
+| revisions | 2 (upload + pipeline output) |
+| canonical issues | 1 blocking issue raised |
+| content checks | `SCHEMA_REFERENTIAL_INTEGRITY` PASSED, `content_ready=false` (unresolved fields block release) |
+| review items API | **124 items**, `missing_numbers=[4,10,16]` — identical to the legacy-path run |
+| artifacts | 3 DRAFT registered (hwpx / hwp / pdf) |
+| draft download | 200 + byte-exact (hwpx 6,131 B / hwp 29,184 B / pdf 18,856 B) |
+
+Regression: `backend/tests/test_service_e2e.py` runs the same path through
+TestClient with mock providers (upload -> intercepted worker spawn -> real
+`run_once` -> NEEDS_REVIEW -> review items -> `content_ready=false`).

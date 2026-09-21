@@ -16,14 +16,19 @@ SPLITS_PATH = (
     REPO_ROOT / "docs" / "handoff" / "evidence" / "CORPUS_SPLITS.json"
 )
 
-# dev-split sample directories, declared per family
-FAMILY_DIRS = {
-    "golden-001-replay": REPO_ROOT / "samples" / "golden_001",
-    "gyenam-2025-imagepdf": (
+# dev-split sample directories, declared per family. A family may have
+# several capture sets of the same exam (same gold, different photos) —
+# list them all; expected.json is read from the first entry.
+FAMILY_DIRS: dict[str, list[Path]] = {
+    "golden-001-replay": [
+        REPO_ROOT / "samples" / "golden_001",
+        REPO_ROOT / "samples" / "simwon_2025_mid2",
+    ],
+    "gyenam-2025-imagepdf": [
         REPO_ROOT
         / "backend" / "data" / "local_evidence" / "restore00"
         / "workdir" / "gyenam_source.pdf"
-    ),
+    ],
 }
 
 
@@ -45,6 +50,12 @@ def benchable_families() -> list[str]:
 
 
 def fixture_path(family_id: str) -> Path:
+    """Primary fixture directory (gold lookups). Use fixture_dirs for all
+    capture sets of a family."""
+    return fixture_dirs(family_id)[0]
+
+
+def fixture_dirs(family_id: str) -> list[Path]:
     reg = load_registry()
     split = splits.family_split(reg, family_id)
     if split == "holdout":
