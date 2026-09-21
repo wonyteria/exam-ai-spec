@@ -160,3 +160,38 @@ recorded (`work-converter.txt` blob + `work_converter` field in the
 census response). Verified on the real service artifact: hwpilot
 converted `exam.hwp` (29,696B binary, Hancom-produced) to a valid HWPX
 whose independent text readback contains all question heads.
+
+## Canonical export flow + full check coverage (rev 6, doc_8dc95bea7fcb)
+
+Frontend export page now drives the canonical flow: eligibility for the
+head revision -> draft artifact creation (server-side proof bound to
+exact bytes) -> promotion only via POST /exports -> download only via
+purpose=final. Draft artifacts are never presented as final.
+
+New honest check implementations (all verified on the real document):
+
+- APPROVED_EDIT_CONFORMANCE — PASSED ("5 revisions audited, hashes
+  consistent"); EDIT lineage from head to restore baseline, recorded
+  change sets + stored-hash recompute.
+- ORIGINAL_SOURCE_FIDELITY — PASSED after a real fresh PaddleOCR audit
+  of 22 question source regions (~330s). Three human-confirmed masked
+  numbers (labels 10/16/20) are correctly reported as human-attested
+  exceptions, not failures — the audit verifies machine extraction
+  fidelity, and reviewer confirmations are their own evidence root.
+- REQUIRED_CONTENT_COVERAGE — FAILED honestly: 9 scored questions lack
+  verified answer/solution (real content gap, surfaced for review).
+- CURRICULUM_COMPLIANCE — PASSED (no declared constraints to violate).
+- LAYOUT_STYLE_BOUNDS — real pdfium page-bounds check; Hancom-rendered
+  PDF doubles as render evidence for the HWPX bytes it came from, so
+  hwpx format checks reach PASSED without simulation.
+
+Real eligibility snapshot (rev 6): 6 PASSED / 3 FAILED (completeness =
+30 unmaterialized question bodies pending review; coverage = missing
+answers/solutions; aggregate) / 2 NOT_RUN (solver checks — no provider
+key configured; stub solver is correctly ineligible).
+
+Also fixed: ResolveATU now materializes the resolved value into the
+derived field it backs (q.body/choices/equations/figures/points/label).
+Previously review resolution only set the ATU status, so rendered
+artifacts and the completeness check saw empty questions forever — the
+real document was unreleasable no matter how much review was done.
