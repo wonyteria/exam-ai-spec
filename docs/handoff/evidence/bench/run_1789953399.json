@@ -1,0 +1,51 @@
+{
+  "commit": "real-e2e",
+  "benchmark_version": "restore10b-1",
+  "split_hash": "1e375e03bf42610a30cdd84defcc5cc1ab9ed0bee07cfa8c13a59a3bd9ea2b7e",
+  "provider_config": "paddleocr,easyocr",
+  "worker_version": "local",
+  "split": "dev",
+  "declared_items": [
+    "golden-001-replay::paddleocr",
+    "golden-001-replay::easyocr"
+  ],
+  "results": {
+    "golden-001-replay::paddleocr": {
+      "status": "PASS",
+      "detail": "{\"family\": \"golden-001-replay\", \"provider\": \"paddleocr\", \"status\": \"PASS\", \"char_exact\": 0.19388418998048146, \"critical_matched\": 142, \"critical_total\": 172, \"critical_exact_rate\": 0.8255813953488372, \"source_hallucination\": 309, \"elapsed_s\": 321.215, \"peak_bytes\": 258959008}",
+      "critical": false
+    },
+    "golden-001-replay::easyocr": {
+      "status": "PASS",
+      "detail": "{\"family\": \"golden-001-replay\", \"provider\": \"easyocr\", \"status\": \"PASS\", \"char_exact\": 0.13610518834399432, \"critical_matched\": 122, \"critical_total\": 172, \"critical_exact_rate\": 0.7093023255813954, \"source_hallucination\": 141, \"elapsed_s\": 100.747, \"peak_bytes\": 113081409}",
+      "critical": false
+    }
+  },
+  "limitations": [],
+  "rows": [
+    {
+      "family": "golden-001-replay",
+      "provider": "paddleocr",
+      "status": "PASS",
+      "char_exact": 0.19388418998048146,
+      "critical_matched": 142,
+      "critical_total": 172,
+      "critical_exact_rate": 0.8255813953488372,
+      "source_hallucination": 309,
+      "elapsed_s": 321.215,
+      "peak_bytes": 258959008
+    },
+    {
+      "family": "golden-001-replay",
+      "provider": "easyocr",
+      "status": "PASS",
+      "char_exact": 0.13610518834399432,
+      "critical_matched": 122,
+      "critical_total": 172,
+      "critical_exact_rate": 0.7093023255813954,
+      "source_hallucination": 141,
+      "elapsed_s": 100.747,
+      "peak_bytes": 113081409
+    }
+  ]
+}

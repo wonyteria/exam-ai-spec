@@ -45,6 +45,22 @@ Env: `EXAMDNA_PADDLEOCR=1 EXAMDNA_PADDLE_PAGE=1 EXAMDNA_EASYOCR=1` (전부 로�
   wired via `ocr.get_providers()` / `vision.get_page_extractors()`.
   26 ATUs auto-verified by exact two-engine agreement; 17 real conflicts kept visible.
 
+## Quantified OCR bench (real damaged pages vs gold expected.json)
+
+`eval/bench` run on `golden-001-replay` (same exam), recorded in
+`docs/handoff/evidence/bench/run_1789953399.json`:
+
+| provider | char_exact | critical tokens | source_hallucination | elapsed |
+|---|---|---|---|---|
+| paddleocr | 0.194 | **142/172 = 82.6%** | 309 | 321s |
+| easyocr | 0.136 | **122/172 = 70.9%** | 141 | 101s |
+
+Reading: page-level char_exact is dominated by handwriting/figure noise the
+print layer is meant to exclude; critical-token exactness is the meaningful
+signal. Neither engine alone reaches release quality — which is exactly why
+the two-observer + fail-closed review design exists. These are dev-split
+numbers on ONE exam — not a general accuracy claim.
+
 ## Known limitations (honest)
 
 - Q4 anchor still missed: detached number landed inside figure region, not at

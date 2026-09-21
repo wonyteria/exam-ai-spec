@@ -32,6 +32,13 @@ def ocr_provider_registry() -> dict[str, ProviderFactory]:
 
     reg["paddleocr"] = _paddle
 
+    def _easyocr():
+        from providers.ocr.easyocr_adapter import EasyOCRProvider
+
+        return EasyOCRProvider()
+
+    reg["easyocr"] = _easyocr
+
     def _mock():
         from providers.mock import MockOCRProvider
 
