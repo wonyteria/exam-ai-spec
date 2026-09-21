@@ -773,7 +773,7 @@ def v1_create_artifact(
             proof = WindowsHWPWorker().convert_with_proof(
                 base, hwp_path, pdf_path, request_revision=rev.id
             )
-        except HWPWorkerUnavailable as exc:
+        except (HWPWorkerUnavailable, RuntimeError, TimeoutError) as exc:
             _err(503, "HWP_WORKER_UNAVAILABLE", str(exc), retryable=True)
         # The rendered PDF is also the render evidence for the HWPX
         # bytes it was produced from — record it on the intermediate
