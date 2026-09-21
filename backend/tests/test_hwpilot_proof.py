@@ -160,3 +160,68 @@ def test_real_readback_on_rendered_hwpx(tmp_path):
     p = tmp_path / "exam.hwpx"
     p.write_bytes(render_hwpx(_doc()))
     assert hwpilot_readback(p, _doc()) == 0
+
+
+class TestRebrandHwpFallback:
+    """Binary .hwp imports: Hancom unavailable -> hwpilot converts for
+    the scan/mutate work file, with provenance recorded; total absence
+    still fails closed (503), never a fake scan."""
+
+    def _setup(self, tmp_path, monkeypatch, convert_result):
+        import zipfile as zf
+        from fastapi import HTTPException
+        from storage.local import LocalObjectStore
+        from app.api import rebrand as rebrand_api
+        from renderers.hwp import HWPWorkerUnavailable
+
+        objects = LocalObjectStore(tmp_path / "objs")
+        objects.put(
+            "imports/t1/d1/source.hwp",
+            b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64,
+        )
+        cstore = SimpleNamespace(
+            list_source_pages=lambda d: [SimpleNamespace(asset_id="a1")],
+            get_source_asset=lambda a: SimpleNamespace(
+                blob_key="imports/t1/d1/source.hwp"
+            ),
+        )
+
+        def _no_worker(self, src, dst, operation_kind=""):
+            raise HWPWorkerUnavailable("no hancom")
+
+        monkeypatch.setattr(
+            rebrand_api.WindowsHWPWorker, "convert_to_hwpx", _no_worker
+        )
+
+        if convert_result:
+            def _conv(src, dst):
+                buf = tmp_path / "fake.hwpx"
+                with zf.ZipFile(dst, "w") as z:
+                    z.writestr("mimetype", "application/hwpx")
+                return True
+        else:
+            def _conv(src, dst):
+                return False
+
+        monkeypatch.setattr(rebrand_api, "hwpilot_convert", _conv)
+        return cstore, objects
+
+    def test_hwpilot_converts_when_hancom_absent(self, tmp_path, monkeypatch):
+        cstore, objects = self._setup(tmp_path, monkeypatch, True)
+        from app.api.rebrand import _work_hwpx
+
+        data = _work_hwpx("t1", "d1", cstore, objects)
+        assert data.startswith(b"PK")
+        conv = objects.open(
+            "local://rebrand/t1/d1/work-converter.txt"
+        ).read_text()
+        assert conv == "hwpilot"
+
+    def test_no_converter_fails_closed(self, tmp_path, monkeypatch):
+        cstore, objects = self._setup(tmp_path, monkeypatch, False)
+        from app.api.rebrand import _work_hwpx
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            _work_hwpx("t1", "d1", cstore, objects)
+        assert exc.value.status_code == 503

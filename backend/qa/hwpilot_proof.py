@@ -19,6 +19,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -129,3 +130,28 @@ def hwpilot_readback(path: Path, document) -> Optional[int]:
     if text.count("서술형 답안 작성란") < descriptive:
         miss += descriptive - text.count("서술형 답안 작성란")
     return miss
+
+
+def hwpilot_convert(src: Path, dst: Path) -> bool:
+    """HWP 5.0 -> HWPX via hwpilot — the Hancom-free conversion path.
+
+    Returns True only when dst exists and is a readable ZIP package;
+    anything else is failure, never a partial write claimed as success.
+    """
+    argv = hwpilot_argv()
+    if argv is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [*argv, "convert", str(src), str(dst), "--force"],
+            capture_output=True,
+            timeout=_TIMEOUT_S,
+            env={**os.environ, **_DAEMON_ENV},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return (
+        proc.returncode == 0
+        and dst.exists()
+        and zipfile.is_zipfile(dst)
+    )

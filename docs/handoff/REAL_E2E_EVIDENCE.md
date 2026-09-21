@@ -150,3 +150,13 @@ never a substitute for render proof. hwpilot limitations found during
 integration: endNote subList text is not exposed in `text` output, and a
 paragraph followed by an endNote run loses its final char — handled with
 a documented dotless-head acceptance.
+
+## Hancom-free HWP->HWPX conversion (rebrand path)
+
+`_work_hwpx` now falls back to `hwpilot convert` when the Windows HWP
+worker is unavailable — binary .hwp imports can be censused and
+rebranded without Hancom (output stays HWPX). Converter provenance is
+recorded (`work-converter.txt` blob + `work_converter` field in the
+census response). Verified on the real service artifact: hwpilot
+converted `exam.hwp` (29,696B binary, Hancom-produced) to a valid HWPX
+whose independent text readback contains all question heads.

@@ -33,6 +33,7 @@ from document.models import Document, Page, PageImage
 from jobs.store import Store
 from rebranding import build_plan, scan_hwpx
 from rebranding.hwpx_mutator import apply_plan
+from qa.hwpilot_proof import hwpilot_convert
 from rebranding.models import (
     BrandRewriteRequest,
     PlanError,
@@ -104,12 +105,23 @@ def _work_hwpx(
     worker = WindowsHWPWorker()
     src_path = objects.open(f"local://{asset.blob_key}")
     out_path = src_path.with_name("work.hwpx")
+    converter = "hancom"
     try:
         worker.convert_to_hwpx(
             src_path, out_path, operation_kind="REBRAND_SCAN_CONVERT"
         )
-    except HWPWorkerUnavailable as exc:
-        _err(503, "HWP_WORKER_UNAVAILABLE", str(exc), retryable=True)
+    except HWPWorkerUnavailable:
+        # Hancom-free path: hwpilot converts binary HWP -> HWPX.
+        # Provenance is recorded next to the work file — a hwpilot
+        # conversion is honest evidence, not a Hancom render.
+        if not hwpilot_convert(src_path, out_path):
+            _err(
+                503,
+                "HWP_WORKER_UNAVAILABLE",
+                "no Hancom worker and hwpilot conversion unavailable/failed",
+                retryable=True,
+            )
+        converter = "hwpilot"
     except Exception as exc:  # noqa: BLE001
         _err(
             503,
@@ -119,6 +131,10 @@ def _work_hwpx(
         )
     data = out_path.read_bytes()
     objects.put(work_key, data)
+    objects.put(
+        f"rebrand/{tenant_id}/{doc_id}/work-converter.txt",
+        converter.encode(),
+    )
     return data
 
 
@@ -265,11 +281,16 @@ def rebrand_candidates(
         f"rebrand/{tenant_id}/{doc_id}/manifest-{manifest.source_sha256[:12]}.json",
         json.dumps(manifest.model_dump(mode="json"), ensure_ascii=False, indent=2).encode(),
     )
+    conv_uri = f"local://rebrand/{tenant_id}/{doc_id}/work-converter.txt"
+    work_converter = (
+        objects.open(conv_uri).read_text().strip() if objects.exists(conv_uri) else "hancom"
+    )
     return {
         "data": {
             "manifest": manifest.model_dump(mode="json"),
             "needs_confirmation": [c.id for c in manifest.needs_confirmation()],
             "fail_closed_flags": manifest.flags.model_dump(),
+            "work_converter": work_converter,
         },
         "request_id": _request_id(),
     }
