@@ -24,3 +24,21 @@ def get_page_extractor():
 
         return PaddlePageExtractor()
     return None
+
+
+def get_page_extractors() -> list:
+    """All enabled page extractors — one per independent OCR engine.
+
+    The segmenter treats identical labels from a second engine as
+    corroboration; engines are opt-in and absent by default.
+    """
+    extractors = []
+    if os.environ.get("EXAMDNA_PADDLE_PAGE") == "1":
+        from .paddle_page import PaddlePageExtractor
+
+        extractors.append(PaddlePageExtractor())
+    if os.environ.get("EXAMDNA_EASYOCR") == "1":
+        from .easyocr_page import EasyOCRPageExtractor
+
+        extractors.append(EasyOCRPageExtractor())
+    return extractors

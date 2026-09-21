@@ -5,14 +5,17 @@
     {
       "family_id": "golden-001-replay",
       "split": "dev",
-      "role": "developer replay fixture (single-provider mock replay)",
+      "role": "developer replay fixture = real photographed exam (심원중학교 2학년 수학 2025-2학기 1차 지필평가, handwriting+grading marks). samples/golden_001 holds 5 pages; samples/simwon_2025_mid2 holds a second capture of the same exam (2 byte-identical, 3 recompressed) — same family by definition.",
       "asset_sha256": [
         "a74d6db259927e6b78d204d045d351462054032faae0b4ca10bb6c89d3d38f6b",
         "84e8ac60817d247ec462b491b6ee57442a85bb2b8aed97b5e934c4618c2c5c8f",
         "3e835b467510e96fa90b7ba18878390a1dd4c5f9dfbb811b8d3e3ef4f63e251d",
         "7191a26f48d6592a9a4c94f5202da723c2adf742d03c606939a16990b19e9546",
         "2321436c9ce5f8d57a985a5fba21b30e66041d707ce64b78da3043640614a941",
-        "1630c60e50ebe2f8af7cdc3f4e4e76a6da4e5d4e5b7e283c0ebc9ce1814ea2fe"
+        "1630c60e50ebe2f8af7cdc3f4e4e76a6da4e5d4e5b7e283c0ebc9ce1814ea2fe",
+        "72c9637484915811fa2af21fafca859b9ebf82fa7a0ba43b0b0f338f4f95691d",
+        "8fe54d3776144398b29661e1e9a2220662439d860a27fdaa7ebf445163f51c18",
+        "062e31da2222a2aa64946a76b45a8f0621f6d450a366e68f3ed29baa9501b9ad"
       ]
     },
     {

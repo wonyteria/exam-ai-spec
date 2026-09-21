@@ -12,3 +12,18 @@ def get_provider():
 
         return PaddleOCRProvider()
     return StubOCRProvider()
+
+
+def get_providers() -> list:
+    """All enabled OCR observers (RESTORE-10C multi-observer).
+
+    EasyOCR is a second, engine-independent observer — opt-in via
+    EXAMDNA_EASYOCR=1. Two observers are required before any field can
+    auto-verify; a single list element keeps every ATU unverified.
+    """
+    providers = [get_provider()]
+    if os.environ.get("EXAMDNA_EASYOCR") == "1":
+        from .easyocr_adapter import EasyOCRProvider
+
+        providers.append(EasyOCRProvider())
+    return providers

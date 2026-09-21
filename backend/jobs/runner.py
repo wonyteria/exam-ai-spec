@@ -21,14 +21,13 @@ def default_providers() -> Providers:
     it is an opt-in fallback (EXAMDNA_ENABLE_GEMINI=1) and developer Codex
     usage stays a separate QA tool, not an operational dependency."""
     providers = Providers(
-        ocr=[ocr.get_provider()],
+        ocr=ocr.get_providers(),
         vision=[vision.get_provider()],
         math_ocr=[math_ocr.get_provider()],
         reasoning=[llm.get_provider()],
         solver=[solver.get_provider()],
     )
-    page_extractor = vision.get_page_extractor()
-    if page_extractor is not None:
+    for page_extractor in vision.get_page_extractors():
         providers.vision.insert(0, page_extractor)
     openai = _openai_provider()
     if openai is not None:
