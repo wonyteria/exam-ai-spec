@@ -2,8 +2,8 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { activeTenant, agentPropose, applyChanges, API, getDocument, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
-import type { AgentProposal } from "@/lib/api";
+import { activeTenant, agentPropose, applyChanges, API, composeExam, getDocument, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import type { AgentProposal, ComposeResult } from "@/lib/api";
 import Modal from "@/components/Modal";
 
 export default function EditorPage() {
@@ -23,6 +23,16 @@ export default function EditorPage() {
   const [submitBusy, setSubmitBusy] = useState(false);
   const [focusQ, setFocusQ] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState("STUDENT_WITH_ENDNOTES");
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeBusy, setComposeBusy] = useState(false);
+  const [composeResult, setComposeResult] = useState<ComposeResult | null>(null);
+  const [composeErr, setComposeErr] = useState<string | null>(null);
+  const [cTitle, setCTitle] = useState("");
+  const [cCount, setCCount] = useState("");
+  const [cHigh, setCHigh] = useState("");
+  const [cMid, setCMid] = useState("");
+  const [cLow, setCLow] = useState("");
+  const [cVersions, setCVersions] = useState("1");
 
   useEffect(() => {
     const tenant = activeTenant();
@@ -123,7 +133,19 @@ export default function EditorPage() {
         </section>
 
         <aside className="flex flex-col p-4">
-          <h2 className="mb-3 font-semibold">AI 편집</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">AI 편집</h2>
+            <button
+              onClick={() => {
+                setComposeOpen(true);
+                setComposeResult(null);
+                setComposeErr(null);
+              }}
+              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+            >
+              새 시험 구성
+            </button>
+          </div>
           <div className="mb-3 flex-1 space-y-1 overflow-auto rounded border bg-gray-50 p-2 text-sm">
             {log.length === 0 && (
               <p className="text-gray-400">
@@ -252,6 +274,138 @@ export default function EditorPage() {
         </div>
       </Modal>
       <Modal
+        title="새 시험 구성"
+        open={composeOpen}
+        onClose={() => {
+          if (composeBusy) return;
+          setComposeOpen(false);
+        }}
+      >
+        <p className="mb-3 text-sm text-gray-600">
+          이 문서의 문항 풀에서 새 시험지를 만듭니다 — 원본 문서는 변경되지 않습니다.
+        </p>
+        <div className="mb-3 space-y-2 text-sm">
+          <input
+            className="w-full rounded border px-3 py-1.5"
+            placeholder="시험 제목 (선택)"
+            value={cTitle}
+            onChange={(e) => setCTitle(e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-1.5"
+            placeholder="총 문항 수 (예: 15)"
+            inputMode="numeric"
+            value={cCount}
+            onChange={(e) => setCCount(e.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">난이도</span>
+            {([
+              ["상", cHigh, setCHigh],
+              ["중", cMid, setCMid],
+              ["하", cLow, setCLow],
+            ] as const).map(([band, val, setter]) => (
+              <label key={band} className="flex items-center gap-1 text-xs">
+                {band}
+                <input
+                  className="w-12 rounded border px-1.5 py-1"
+                  inputMode="numeric"
+                  value={val}
+                  onChange={(e) => setter(e.target.value)}
+                />
+              </label>
+            ))}
+            <label className="ml-auto flex items-center gap-1 text-xs">
+              버전
+              <select
+                className="rounded border px-1.5 py-1"
+                value={cVersions}
+                onChange={(e) => setCVersions(e.target.value)}
+              >
+                <option value="1">1</option>
+                <option value="2">A/B 2</option>
+                <option value="3">3</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        {composeErr && (
+          <p className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">
+            {composeErr}
+          </p>
+        )}
+        {composeResult && (
+          <div className="mb-3 rounded border border-green-300 bg-green-50 p-3 text-sm">
+            {composeResult.exams.map((ex, i) => (
+              <p key={ex.document_id}>
+                <a
+                  className="font-medium text-green-800 underline"
+                  href={`/documents/${ex.document_id}/editor`}
+                >
+                  버전 {composeResult.exams.length > 1 ? `${"ABC"[i]} — ` : ""}
+                  {ex.questions}문항
+                </a>
+              </p>
+            ))}
+            <p className="mt-1 text-xs text-green-700">
+              예상 풀이 시간 {Math.round(composeResult.total_estimated_minutes)}분
+            </p>
+            {Object.keys(composeResult.unfilled).length > 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                채우지 못한 슬롯:{" "}
+                {Object.entries(composeResult.unfilled)
+                  .map(([k, v]) => `${k} ${v}문항`)
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button
+            className="rounded border px-3 py-1 text-sm"
+            onClick={() => setComposeOpen(false)}
+            disabled={composeBusy}
+          >
+            닫기
+          </button>
+          <button
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+            disabled={composeBusy}
+            onClick={async () => {
+              const tenant = activeTenant();
+              if (!tenant || composeBusy) return;
+              setComposeBusy(true);
+              setComposeErr(null);
+              try {
+                const mix: Record<string, number> = {};
+                const hi = parseInt(cHigh, 10);
+                const mi = parseInt(cMid, 10);
+                const lo = parseInt(cLow, 10);
+                if (hi > 0) mix["상"] = hi;
+                if (mi > 0) mix["중"] = mi;
+                if (lo > 0) mix["하"] = lo;
+                const cnt = parseInt(cCount, 10);
+                setComposeResult(
+                  await composeExam(tenant, id, {
+                    title: cTitle || undefined,
+                    count: Number.isInteger(cnt) && cnt > 0 ? cnt : undefined,
+                    difficulty_mix:
+                      Object.keys(mix).length > 0 ? mix : undefined,
+                    versions: parseInt(cVersions, 10) || 1,
+                  }),
+                );
+              } catch (e) {
+                setComposeErr(String(e));
+              } finally {
+                setComposeBusy(false);
+              }
+            }}
+          >
+            {composeBusy ? "구성 중…" : "구성"}
+          </button>
+        </div>
+      </Modal>
+      <Modal
         title="충돌 감지"
         open={conflictOpen}
         onClose={() => setConflictOpen(false)}
@@ -292,8 +446,8 @@ function QuestionList({
       .then((doc) =>
         setQuestions(
           (doc.questions ?? []).map(
-            (q: { id: string; number: number; label?: string | null; verification: { status: string } }) => ({
-              id: q.id,
+            (q: { id?: string; number: number; label?: string | null; verification: { status: string } }) => ({
+              id: q.id ?? `n${q.number}`,
               number: q.number,
               label: q.label ?? `${q.number}`,
               status: q.verification.status,
