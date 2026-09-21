@@ -168,3 +168,81 @@ def test_review_item_resolve_over_http(env):
         f"/api/documents/{doc.id}/review-items", headers=h
     ).json()
     assert body2["items"] == []
+
+
+def test_renumber_masked_question_over_http(env):
+    """The review UI's number-confirmation flow: SetField number via the
+    canonical /changes endpoint under If-Match, then the canonical-aware
+    read model must show the confirmed label everywhere."""
+    client, deps, _ = env
+    h = {"X-Dev-User": "e2e"}
+    tenant_id = client.post(
+        "/api/tenants", json={"name": "E2E"}, headers=h
+    ).json()["id"]
+    h["X-Dev-Tenant"] = tenant_id
+
+    from canonical.service import MutationService
+    from document.models import Document, Question, TextSpan
+
+    doc = Document(tenant_id=tenant_id)
+    doc.questions.extend(
+        [
+            Question(number=3, label="3", body=[TextSpan(text="앞 문항")]),
+            Question(
+                number=99,
+                label="?mark1",
+                body=[TextSpan(text="번호 가려진 문항")],
+            ),
+            Question(number=5, label="5", body=[TextSpan(text="뒤 문항")]),
+        ]
+    )
+    deps.get_store().save_document(doc)
+    service = MutationService(deps.get_canonical(), deps.get_tenancy())
+    service.create_revision(doc, tenant_id, "e2e")
+
+    head = client.get(
+        f"/api/v1/tenants/{tenant_id}/documents/{doc.id}/revisions",
+        headers=h,
+    ).json()["data"]["revisions"][-1]
+
+    # Exact op shape the frontend renumberQuestion() helper sends.
+    res = client.post(
+        f"/api/v1/tenants/{tenant_id}/documents/{doc.id}/changes",
+        json={
+            "ops": [
+                {
+                    "op": "SetField",
+                    "target_id": "?mark1",
+                    "field": "number",
+                    "value": 4,
+                }
+            ]
+        },
+        headers={**h, "If-Match": head["id"]},
+    )
+    assert res.status_code == 200, res.text
+
+    # Canonical-aware read model: get_document shows label 4, re-sorted.
+    got = client.get(f"/api/documents/{doc.id}", headers=h).json()
+    assert [q["label"] for q in got["questions"]] == ["3", "4", "5"]
+
+    # Duplicate number is a conflict, not a silent merge.
+    head2 = client.get(
+        f"/api/v1/tenants/{tenant_id}/documents/{doc.id}/revisions",
+        headers=h,
+    ).json()["data"]["revisions"][-1]
+    dup = client.post(
+        f"/api/v1/tenants/{tenant_id}/documents/{doc.id}/changes",
+        json={
+            "ops": [
+                {
+                    "op": "SetField",
+                    "target_id": "3",
+                    "field": "number",
+                    "value": 4,
+                }
+            ]
+        },
+        headers={**h, "If-Match": head2["id"]},
+    )
+    assert dup.status_code == 409, dup.text

@@ -75,9 +75,20 @@ def list_documents(
     ctx: AuthContext = Depends(require_tenant),
 ):
     """Document library for the caller's active academy only."""
+    from document.models import Document
+
     docs = store.list_documents(ctx.tenant_id)
-    return {
-        "documents": [
+    out = []
+    for d in docs:
+        # Overlay the canonical head when it exists so post-mutation
+        # counts/status (renumbering, resolved ATUs) are not stale.
+        _, head = _canonical_for(d.id)
+        if head is not None and head.content_json:
+            try:
+                d = Document.model_validate(head.content_json)
+            except Exception:
+                pass
+        out.append(
             {
                 "id": d.id,
                 "version": d.version,
@@ -86,9 +97,8 @@ def list_documents(
                 "status": d.verification.status,
                 "metadata": d.metadata.model_dump(),
             }
-            for d in docs
-        ]
-    }
+        )
+    return {"documents": out}
 
 
 @router.get("/{doc_id}")
