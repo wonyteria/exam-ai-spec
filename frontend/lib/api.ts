@@ -217,6 +217,7 @@ export interface ReviewItemsResponse {
   }[];
   gate: Record<string, unknown> | null;
   missing_numbers: number[];
+  unresolved_labels?: string[];
 }
 
 export async function getReviewItems(docId: string): Promise<ReviewItemsResponse> {

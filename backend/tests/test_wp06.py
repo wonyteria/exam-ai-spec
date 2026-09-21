@@ -387,7 +387,9 @@ def test_add_question_recovery(service, cstore):
 
 def test_setfield_number_confirms_ambiguous_label(service, cstore):
     """A '?'-labeled question (masked number anchor) is confirmed to its
-    real number via SetField number — the review path for ?markN items."""
+    real printed number via SetField number — the review path for
+    ?markN items. `number` is the positional sequence (dense 1..N) and
+    stays put; the printed number lives on `label`."""
     d = Document(tenant_id="tn_1")
     q = Question(number=99, label="?mark1", body=[TextSpan(text="본문")])
     d.questions.append(q)
@@ -399,8 +401,8 @@ def test_setfield_number_confirms_ambiguous_label(service, cstore):
         route="review.renumber",
     )
     d2 = _content(cstore, rev2)
-    assert d2.questions[0].number == 4
-    assert d2.questions[0].label == "4"  # ?-label refreshed
+    assert d2.questions[0].label == "4"  # printed number confirmed
+    assert d2.questions[0].number == 99  # positional sequence untouched
     assert rev2.revision_no == 2
 
 
@@ -425,8 +427,9 @@ def test_setfield_number_rejects_non_integer(service, cstore):
         )
 
 
-def test_setfield_number_keeps_custom_label(service, cstore):
-    """A descriptive label (논술2) is not clobbered by renumbering."""
+def test_setfield_number_replaces_descriptive_label(service, cstore):
+    """Confirming a printed number overwrites whatever label was there —
+    the reviewer is asserting the printed number, so '논술2' -> '7'."""
     d = Document(tenant_id="tn_1")
     q = Question(number=99, label="논술2", body=[TextSpan(text="본문")])
     d.questions.append(q)
@@ -437,5 +440,5 @@ def test_setfield_number_keeps_custom_label(service, cstore):
         route="edits",
     )
     d2 = _content(cstore, cstore.get_head_revision(d.id))
-    assert d2.questions[0].number == 7
-    assert d2.questions[0].label == "논술2"
+    assert d2.questions[0].label == "7"
+    assert d2.questions[0].number == 99  # sequence position unchanged

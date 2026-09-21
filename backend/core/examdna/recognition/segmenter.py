@@ -16,6 +16,7 @@ def run(ctx: PipelineContext) -> None:
     """
     questions: list[Question] = []
     ctx.page_extractions = {}  # page index -> [(provider name, item)] for runner
+    seen_ambiguous: set[str] = set()  # "?"-labels must be unique doc-wide
     for page in ctx.document.pages:
         _classify_page_role(ctx, page)
         if page.page_role == "ANSWER_KEY":
@@ -36,6 +37,15 @@ def run(ctx: PipelineContext) -> None:
                     # corroborating evidence (its fields merge via
                     # page_extractions), not another question.
                     continue
+                if label.startswith("?"):
+                    # Ambiguous anchors repeat across pages ("?mark1" on
+                    # pages 1 and 3) — an unresolvable duplicate target
+                    # would make review confirmation impossible.
+                    base, n = label, 2
+                    while label in seen_ambiguous:
+                        label = f"{base}-{n}"
+                        n += 1
+                    seen_ambiguous.add(label)
                 seen_labels.add(label)
                 bbox = _to_pixels(cand.get("bbox"), page.width, page.height)
                 page_questions.append(

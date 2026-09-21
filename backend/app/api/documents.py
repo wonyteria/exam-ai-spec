@@ -190,11 +190,24 @@ def review_items(access=Depends(doc_access("review"))):
         for q in doc.questions
         if q.verification.logic_flags
     ]
+    # Missing printed numbers reflect the CURRENT labels — the gate
+    # snapshot is pipeline-time evidence; a confirmed `?`-label must not
+    # keep reporting its number as missing.
+    numeric = {int(q.label) for q in doc.questions if (q.label or "").isdigit()}
+    missing = (
+        [n for n in range(1, max(numeric) + 1) if n not in numeric]
+        if numeric
+        else []
+    )
+    unresolved = [
+        q.label for q in doc.questions if (q.label or "").startswith("?")
+    ]
     return {
         "items": items,
         "logic_flags": flags,
         "gate": doc.verification.gate,
-        "missing_numbers": (doc.verification.gate or {}).get("missing_numbers", []),
+        "missing_numbers": missing,
+        "unresolved_labels": unresolved,
     }
 
 

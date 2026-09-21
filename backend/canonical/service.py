@@ -614,10 +614,12 @@ class MutationService:
                         raise ValidationError(f"unknown question field {op.field}")
                     self._check_old_digest(getattr(q, op.field), op.expected_old_digest)
                     if op.field == "number":
-                        # Renumbering is how a reviewer confirms a masked/
-                        # ambiguous anchor ("?mark1") to its real number.
-                        # Coerce, reject collisions, refresh a ?-style
-                        # label, and keep the question list sorted.
+                        # Confirming the printed number of a masked/
+                        # ambiguous anchor ("?mark1") is a LABEL fix:
+                        # `number` is the positional sequence assigned at
+                        # segmentation (dense 1..N, including "2-1"
+                        # subquestions), so it must not be overwritten —
+                        # every printed number would collide with it.
                         try:
                             new_num = int(str(op.value).strip())
                         except (TypeError, ValueError):
@@ -626,20 +628,16 @@ class MutationService:
                             )
                         if new_num <= 0:
                             raise ValidationError("question number must be > 0")
+                        new_label = str(new_num)
                         if any(
-                            x.id != q.id and x.number == new_num
+                            x.id != q.id and x.label == new_label
                             for x in doc.questions
                         ):
                             raise ConflictError(
                                 "NUMBER_EXISTS",
-                                f"question {new_num} already exists",
+                                f"question {new_label} already exists",
                             )
-                        if not q.label or q.label.startswith("?") or (
-                            q.label == str(q.number)
-                        ):
-                            q.label = str(new_num)
-                        q.number = new_num
-                        doc.questions.sort(key=lambda x: x.number)
+                        q.label = new_label
                         summary.append(
                             {"op": op.op, "question": op.target_id,
                              "field": "number", "value": new_num}

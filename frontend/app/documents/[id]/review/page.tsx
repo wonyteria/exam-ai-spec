@@ -54,6 +54,7 @@ export default function ReviewPage() {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [flags, setFlags] = useState<LogicFlagGroup[]>([]);
   const [missingNumbers, setMissingNumbers] = useState<number[]>([]);
+  const [unresolvedLabels, setUnresolvedLabels] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -75,6 +76,7 @@ export default function ReviewPage() {
         setItems(data.items);
         setFlags(data.logic_flags);
         setMissingNumbers(data.missing_numbers ?? []);
+        setUnresolvedLabels(data.unresolved_labels ?? []);
         const tenant = activeTenant();
         if (tenant) {
           try {
@@ -124,6 +126,7 @@ export default function ReviewPage() {
       setItems(data.items);
       setFlags(data.logic_flags);
       setMissingNumbers(data.missing_numbers ?? []);
+      setUnresolvedLabels(data.unresolved_labels ?? []);
     } catch (e) {
       setRenumberMsg(`번호 확정 실패: ${String(e)}`);
     } finally {
@@ -260,7 +263,20 @@ export default function ReviewPage() {
             인쇄 번호 누락: {missingNumbers.join(", ")}번
           </span>
           <p className="text-sm text-red-700">
-            문항이 통째로 인식되지 않았습니다 — 원본 이미지를 확인해 주세요
+            {unresolvedLabels.length > 0
+              ? "일부는 ? 라벨 문항으로 보존되었습니다 — 각 카드에서 실제 번호를 확정해 주세요"
+              : "문항이 통째로 인식되지 않았습니다 — 원본 이미지를 확인해 주세요"}
+          </p>
+        </div>
+      )}
+
+      {missingNumbers.length === 0 && unresolvedLabels.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <span className="font-semibold text-amber-800">
+            번호 미확정 문항: {unresolvedLabels.join(", ")}
+          </span>
+          <p className="text-sm text-amber-700">
+            채점 표시 등으로 인쇄 번호가 가려진 문항입니다 — 각 카드에서 실제 번호를 확정해 주세요
           </p>
         </div>
       )}
