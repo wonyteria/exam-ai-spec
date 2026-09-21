@@ -30,6 +30,7 @@ from canonical.store import (
     ValidationError,
 )
 from jobs.store import Store
+from jobs.artifact_bridge import hwp_checks, hwpx_checks, pdf_checks
 from renderers.hwp import HWPWorkerUnavailable, WindowsHWPWorker
 from renderers.hwpx import render_hwpx
 from renderers.pdf import render_pdf
@@ -745,12 +746,21 @@ def v1_create_artifact(
         art = _service(cstore).register_draft_artifact(
             tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
         )
+        # Server-side proof: the same checks the pipeline bridge computes
+        # (own parse + independent hwpilot readback) — the artifact does
+        # not rely on client-supplied claims.
+        hwpx_path = objects.open(uri)
+        _service(cstore).record_proof(
+            art.id,
+            checks=hwpx_checks(hwpx_path, doc),
+            worker_identity="v1.create_artifact",
+        )
     elif fmt in {"hwp", "pdf"}:
         hwpx_blob = render_hwpx(doc, output_mode=req.output_mode)
         hwpx_sha = hashlib.sha256(hwpx_blob).hexdigest()
         hwpx_key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/hwpx-{hwpx_sha[:16]}.hwpx"
         hwpx_uri = objects.put(hwpx_key, hwpx_blob)
-        _service(cstore).register_draft_artifact(
+        hwpx_art = _service(cstore).register_draft_artifact(
             tenant_id, doc_id, rev.id, "hwpx", hwpx_uri, hwpx_sha, len(hwpx_blob), req.output_mode
         )
         base = objects.open(hwpx_uri)
@@ -762,6 +772,14 @@ def v1_create_artifact(
             )
         except HWPWorkerUnavailable as exc:
             _err(503, "HWP_WORKER_UNAVAILABLE", str(exc), retryable=True)
+        # The rendered PDF is also the render evidence for the HWPX
+        # bytes it was produced from — record it on the intermediate
+        # artifact so the hwpx format can reach eligibility honestly.
+        _service(cstore).record_proof(
+            hwpx_art.id,
+            checks=hwpx_checks(base, doc, pdf_path=pdf_path),
+            worker_identity=(proof or {}).get("worker_identity", ""),
+        )
         target = hwp_path if fmt == "hwp" else pdf_path
         blob = target.read_bytes()
         sha = hashlib.sha256(blob).hexdigest()
@@ -771,9 +789,12 @@ def v1_create_artifact(
             tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
         )
         required = set(restore_policy(req.output_mode).required_artifact_checks_by_format.get(fmt, []))
-        checks = {k: "FAILED" for k in required}
-        for k, v in (proof or {}).get("checks", {}).items():
-            checks[k] = v
+        # Same evidence as the pipeline bridge: worker step-returns +
+        # rendered-PDF text + independent hwpilot readback on the binary.
+        if fmt == "hwp":
+            checks = hwp_checks(hwp_path, pdf_path, doc, proof or {})
+        else:
+            checks = pdf_checks(pdf_path, doc, proof)
         for k in required:
             if k not in checks:
                 checks[k] = "FAILED"

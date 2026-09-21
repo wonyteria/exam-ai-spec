@@ -149,6 +149,39 @@ def pdf_text(pdf_path: Path) -> str | None:
     return blob
 
 
+def pdf_layout_ok(pdf_path: Path, tolerance_pt: float = 5.0) -> bool | None:
+    """Every rendered glyph's bbox must sit inside its page box —
+    catches content clipped or pushed off-page. None when the rasterizer
+    or char geometry is unavailable (stays NOT_RUN, never guessed)."""
+    if not pdf_path.exists():
+        return None
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(str(pdf_path))
+    except Exception:
+        return None
+    try:
+        for i in range(len(pdf)):
+            page = pdf[i]
+            try:
+                w, h = page.get_size()
+                tp = page.get_textpage()
+                for c in range(tp.count_chars()):
+                    left, bottom, right, top = tp.get_charbox(c)
+                    if (
+                        left < -tolerance_pt
+                        or bottom < -tolerance_pt
+                        or right > w + tolerance_pt
+                        or top > h + tolerance_pt
+                    ):
+                        return False
+            finally:
+                page.close()
+    except Exception:
+        return None
+    return True
+
+
 def _pdf_text_mismatches(pdf_path: Path, document) -> int:
     """Rendered-PDF text check — catches content lost between parse and
     render even when the XML itself is complete."""

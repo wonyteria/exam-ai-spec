@@ -19,6 +19,7 @@ from qa.hwp_proof import (
     _hwpx_content_mismatches,
     _hwpx_text_and_objects,
     _pdf_text_mismatches,
+    pdf_layout_ok,
     pdf_text,
 )
 from qa.hwpilot_proof import hwpilot_readback
@@ -43,14 +44,11 @@ def register_pipeline_artifacts(
     art = _put_and_register(
         service, objects, job, ctx.document.id, rev.id, "hwpx", hwpx
     )
-    service.record_proof(
-        art.id,
-        checks=hwpx_checks(hwpx, ctx.document),
-        worker_identity="examdna-pipeline",
-    )
     registered.append(art)
 
-    # HWP + PDF exist only through the actual Hancom round-trip.
+    # HWP + PDF exist only through the actual Hancom round-trip. The
+    # resulting PDF is also the render evidence for the HWPX bytes, so
+    # the HWPX proof is recorded after conversion.
     proof = None
     try:
         worker = WindowsHWPWorker()
@@ -61,11 +59,21 @@ def register_pipeline_artifacts(
             )
     except (HWPWorkerUnavailable, RuntimeError, TimeoutError):
         proof = None
+
+    pdf_path = out / "exam.pdf"
+    service.record_proof(
+        art.id,
+        checks=hwpx_checks(
+            hwpx, ctx.document,
+            pdf_path=pdf_path if pdf_path.exists() else None,
+        ),
+        worker_identity="examdna-pipeline",
+    )
     if proof is None:
         return registered
 
     wid = proof.get("worker_identity", "")
-    hwp_path, pdf_path = out / "exam.hwp", out / "exam.pdf"
+    hwp_path = out / "exam.hwp"
     for fmt, path in (("hwp", hwp_path), ("pdf", pdf_path)):
         if not path.exists():
             continue
@@ -100,9 +108,11 @@ def _scored(doc) -> int:
     return sum(1 for q in doc.questions if q.points)
 
 
-def hwpx_checks(hwpx_path: Path, doc) -> dict[str, str]:
+def hwpx_checks(hwpx_path: Path, doc, pdf_path: Path | None = None) -> dict[str, str]:
     """What the HWPX's own bytes can prove. Unverifiable dimensions stay
-    NOT_RUN rather than being claimed."""
+    NOT_RUN rather than being claimed. When `pdf_path` is given — the
+    Hancom render of exactly these bytes — it is honest render evidence
+    for the HWPX itself."""
     checks = _blank("hwpx")
     try:
         _blob, objects = _hwpx_text_and_objects(hwpx_path)
@@ -124,8 +134,16 @@ def hwpx_checks(hwpx_path: Path, doc) -> dict[str, str]:
     checks["OUTPUT_MODE_CONTENT_POLICY"] = (
         "PASSED" if objects["endnote_answers"] >= _scored(doc) else "NOT_RUN"
     )
-    # RENDERED_TEXT_VISUAL_MATCH / LAYOUT_STYLE_BOUNDS need a render —
-    # left NOT_RUN; the PDF artifact carries that evidence separately.
+    if pdf_path is not None and pdf_path.exists():
+        text = pdf_text(pdf_path)
+        if text is not None:
+            checks["RENDERED_TEXT_VISUAL_MATCH"] = (
+                "PASSED" if _pdf_text_mismatches(pdf_path, doc) == 0 else "FAILED"
+            )
+        layout = pdf_layout_ok(pdf_path)
+        if layout is not None:
+            checks["LAYOUT_STYLE_BOUNDS"] = "PASSED" if layout else "FAILED"
+    # Without a render both stay NOT_RUN — never inferred.
     return checks
 
 
@@ -146,6 +164,9 @@ def hwp_checks(hwp_path: Path, pdf_path: Path, doc, proof: dict) -> dict[str, st
         checks["OUTPUT_MODE_CONTENT_POLICY"] = (
             "PASSED" if text.count("정답:") >= _scored(doc) else "NOT_RUN"
         )
+        layout = pdf_layout_ok(pdf_path)
+        if layout is not None:
+            checks["LAYOUT_STYLE_BOUNDS"] = "PASSED" if layout else "FAILED"
     # Independent binary readback: a parse by code we did not write is
     # the only direct evidence on the .hwp bytes themselves.
     readback = hwpilot_readback(hwp_path, doc)
@@ -170,6 +191,9 @@ def pdf_checks(pdf_path: Path, doc, proof: Optional[dict] = None) -> dict[str, s
     checks["ARTIFACT_SEMANTIC_COVERAGE"] = coverage
     checks["RENDERED_TEXT_VISUAL_MATCH"] = coverage
     checks["ARTIFACT_HASH_BINDING"] = "PASSED"
+    layout = pdf_layout_ok(pdf_path)
+    if layout is not None:
+        checks["LAYOUT_STYLE_BOUNDS"] = "PASSED" if layout else "FAILED"
     if proof is not None:
         checks["FORMAT_CONVERSION_PROVENANCE"] = "PASSED"
     checks["OUTPUT_MODE_CONTENT_POLICY"] = (
