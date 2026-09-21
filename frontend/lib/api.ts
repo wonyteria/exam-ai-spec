@@ -332,6 +332,28 @@ export async function applyChanges(
   return res.json();
 }
 
+export interface CanonicalIssue {
+  id: string;
+  question_ids: string[];
+  kind: string;
+  severity: string;
+  blocking: boolean;
+  state: string;
+  reason: string;
+}
+
+export async function getIssues(
+  tenantId: string,
+  docId: string,
+): Promise<CanonicalIssue[]> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/issues?state=OPEN`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data.issues;
+}
+
 export interface RevisionInfo {
   id: string;
   revision_no: number;

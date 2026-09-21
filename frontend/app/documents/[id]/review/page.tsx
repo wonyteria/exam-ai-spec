@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import {
   activeTenant,
   API,
+  CanonicalIssue,
   confirmPageOrder,
   DocPage,
   getDocPages,
+  getIssues,
   getReviewItems,
   renumberQuestion,
   resolveItem,
@@ -64,6 +66,7 @@ export default function ReviewPage() {
   const [flags, setFlags] = useState<LogicFlagGroup[]>([]);
   const [missingNumbers, setMissingNumbers] = useState<number[]>([]);
   const [unresolvedLabels, setUnresolvedLabels] = useState<string[]>([]);
+  const [issues, setIssues] = useState<CanonicalIssue[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -98,6 +101,13 @@ export default function ReviewPage() {
             setManifest(pd.manifest);
           } catch {
             /* page manifest unavailable — order panel stays hidden */
+          }
+          try {
+            const iss = await getIssues(tenant, id);
+            if (cancelled) return;
+            setIssues(iss);
+          } catch {
+            /* issue list unavailable — section stays hidden */
           }
         }
       } catch (e) {
@@ -140,6 +150,7 @@ export default function ReviewPage() {
       setFlags(data.logic_flags);
       setMissingNumbers(data.missing_numbers ?? []);
       setUnresolvedLabels(data.unresolved_labels ?? []);
+      setIssues(await getIssues(tenant, id));
     } catch (e) {
       setRenumberMsg(`번호 확정 실패: ${String(e)}`);
     } finally {
@@ -343,10 +354,40 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {loaded && pending === 0 && !error && (
+      {loaded && pending === 0 && issues.length === 0 && !error && (
         <p className="rounded-lg border border-green-300 bg-green-50 p-4 text-green-800">
           확인할 항목이 없습니다. 내보내기로 진행할 수 있습니다.
         </p>
+      )}
+
+      {issues.length > 0 && (
+        <section className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4">
+          <h2 className="mb-2 font-semibold text-red-800">
+            열린 이슈 {issues.length}건 — 최종보내기를 차단합니다
+          </h2>
+          <ul className="space-y-2">
+            {issues.map((iss) => (
+              <li key={iss.id} className="rounded border bg-white p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                    {iss.blocking ? "차단" : "경고"}
+                  </span>
+                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                    {iss.kind}
+                  </span>
+                  {iss.severity !== "info" && (
+                    <span className="text-xs text-gray-500">
+                      심각도 {iss.severity}
+                    </span>
+                  )}
+                </div>
+                {iss.reason && (
+                  <p className="mt-1.5 text-gray-700">{iss.reason}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {groups.map((g) => {
