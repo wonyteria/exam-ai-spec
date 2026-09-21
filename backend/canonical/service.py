@@ -716,6 +716,25 @@ class MutationService:
                 summary.append(
                     {"op": "SetEquation", "question": op.target_id, "index": idx}
                 )
+            elif op.op == "SetSolution":
+                from document.models import Solution, TextSpan
+
+                q = self._find_question(doc, op.target_id)
+                v = op.value
+                if isinstance(v, dict):
+                    steps = [
+                        str(s) for s in (v.get("steps") or []) if str(s).strip()
+                    ]
+                    concepts = [str(c) for c in (v.get("concepts") or [])]
+                else:
+                    steps = [s for s in str(v).splitlines() if s.strip()]
+                    concepts = []
+                self._check_old_digest(q.solution, op.expected_old_digest)
+                q.solution = Solution(
+                    steps=[TextSpan(text=s) for s in steps],
+                    concepts=concepts,
+                )
+                summary.append({"op": "SetSolution", "question": op.target_id})
             elif op.op == "AddQuestion":
                 # Missing-question recovery path (WP06): a new question is
                 # appended and re-sorted — never merged into an existing

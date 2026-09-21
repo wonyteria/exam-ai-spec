@@ -746,3 +746,47 @@ def test_curriculum_passes_with_declared_concepts(service, cstore):
     rev = service.create_revision(d, "tn_1", "alice")
     state, summary = service._run_one("CURRICULUM_COMPLIANCE", d, rev)
     assert state == CheckState.PASSED, summary
+
+
+# --- SetSolution ---------------------------------------------------------------
+
+
+def test_set_solution_materializes_steps(service, cstore):
+    """A teacher-entered solution must land as structured Solution.steps —
+    REQUIRED_CONTENT_COVERAGE reads steps, not raw strings."""
+    doc, rev = _setup(service)
+    rev2 = service.apply(
+        "tn_1", "alice", doc.id, rev.id,
+        [ChangeOp(op="SetSolution", target_id="1",
+                  value="x^2=4이므로\nx=±2")],
+        route="edits",
+    )
+    d2 = _content(cstore, rev2)
+    sol = d2.questions[0].solution
+    assert sol is not None
+    assert [s.text for s in sol.steps] == ["x^2=4이므로", "x=±2"]
+
+
+def test_set_solution_dict_with_concepts(service, cstore):
+    doc, rev = _setup(service)
+    rev2 = service.apply(
+        "tn_1", "alice", doc.id, rev.id,
+        [ChangeOp(op="SetSolution", target_id="2",
+                  value={"steps": ["단계1"], "concepts": ["합동"]})],
+        route="edits",
+    )
+    d2 = _content(cstore, rev2)
+    sol = d2.questions[1].solution
+    assert sol.concepts == ["합동"]
+    # answer+solution now present -> coverage no longer lists them missing
+    d2.questions[1].points = 3
+    state, summary = service._run_one("REQUIRED_CONTENT_COVERAGE", d2, rev2)
+    assert "2:solution" not in summary
+
+
+def test_ops_to_change_ops_maps_solution():
+    ops, skipped = ops_to_change_ops(
+        [{"question": "1", "field": "solution", "value": "풀이"}]
+    )
+    assert len(ops) == 1 and ops[0].op == "SetSolution"
+    assert skipped == []

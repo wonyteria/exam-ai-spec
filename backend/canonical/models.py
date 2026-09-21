@@ -276,6 +276,7 @@ class ChangeOp(BaseModel):
         "SetBody",
         "SetChoice",
         "SetEquation",
+        "SetSolution",
         "AddQuestion",
         "RemoveQuestion",
         "MoveQuestion",

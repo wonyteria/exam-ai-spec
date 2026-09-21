@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { activeTenant, agentPropose, applyChanges, API, composeExam, getDocument, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import { activeTenant, agentPropose, applyChanges, API, composeExam, getDocument, getHeadRevisionForTenant, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
 import type { AgentProposal, ComposeResult } from "@/lib/api";
 import Modal from "@/components/Modal";
 
@@ -22,6 +22,7 @@ export default function EditorPage() {
   const [pendingProposal, setPendingProposal] = useState<AgentProposal | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
   const [focusQ, setFocusQ] = useState<string | null>(null);
+  const [selQ, setSelQ] = useState<QuestionSummary | null>(null);
   const [previewMode, setPreviewMode] = useState("STUDENT_WITH_ENDNOTES");
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeBusy, setComposeBusy] = useState(false);
@@ -106,8 +107,23 @@ export default function EditorPage() {
           <QuestionList
             key={listKey}
             docId={id}
-            onSelect={(qid) => setFocusQ(qid)}
+            onSelect={(q) => {
+              setFocusQ(q.id);
+              setSelQ(q);
+            }}
           />
+          {selQ && (
+            <QuestionEditCard
+              key={`${selQ.id}-${listKey}`}
+              docId={id}
+              question={selQ}
+              onApplied={() => {
+                setPreviewKey((k) => k + 1);
+                setListKey((k) => k + 1);
+              }}
+              onLog={(line) => setLog((l) => [line, ...l])}
+            />
+          )}
         </aside>
 
         <section className="flex flex-col overflow-hidden">
@@ -430,27 +446,53 @@ export default function EditorPage() {
   );
 }
 
+interface QuestionSummary {
+  id: string;
+  number: number;
+  label: string;
+  status: string;
+  points: number | null;
+  answer: string | null;
+  solution: string | null;
+}
+
 function QuestionList({
   docId,
   onSelect,
 }: {
   docId: string;
-  onSelect?: (questionId: string) => void;
+  onSelect?: (question: QuestionSummary) => void;
 }) {
-  const [questions, setQuestions] = useState<
-    { id: string; number: number; label: string; status: string }[]
-  >([]);
+  const [questions, setQuestions] = useState<QuestionSummary[]>([]);
 
   useEffect(() => {
     getDocument(docId)
       .then((doc) =>
         setQuestions(
           (doc.questions ?? []).map(
-            (q: { id?: string; number: number; label?: string | null; verification: { status: string } }) => ({
+            (q: {
+              id?: string;
+              number: number;
+              label?: string | null;
+              points?: number | null;
+              answer?: { value?: unknown } | null;
+              solution?: { steps?: { text?: string }[] } | null;
+              verification: { status: string };
+            }) => ({
               id: q.id ?? `n${q.number}`,
               number: q.number,
               label: q.label ?? `${q.number}`,
               status: q.verification.status,
+              points: q.points ?? null,
+              answer:
+                q.answer?.value === undefined || q.answer?.value === null
+                  ? null
+                  : String(q.answer.value),
+              solution:
+                q.solution?.steps
+                  ?.map((s) => s.text ?? "")
+                  .filter(Boolean)
+                  .join("\n") || null,
             }),
           ),
         ),
@@ -466,25 +508,137 @@ function QuestionList({
         <li key={q.id}>
           <button
             type="button"
-            onClick={() => onSelect?.(q.id)}
+            onClick={() => onSelect?.(q)}
             className="flex w-full items-center justify-between rounded border bg-white px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50"
-            title="미리보기에서 이 문항으로 이동"
+            title="미리보기에서 이 문항으로 이동 / 정답·풀이 편집"
           >
             <span>{q.label}번</span>
-            <span
-              className={`rounded px-1.5 py-0.5 text-xs ${
-                q.status === "HUMAN_VERIFIED" || q.status === "AUTO_VERIFIED"
-                  ? "bg-green-100 text-green-700"
-                  : q.status === "UNVERIFIED"
-                    ? "bg-gray-100 text-gray-500"
-                    : "bg-amber-100 text-amber-700"
-              }`}
-            >
-              {q.status}
+            <span className="flex items-center gap-1.5">
+              {q.points != null && q.answer == null && (
+                <span
+                  className="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-600"
+                  title="배점 문항에 정답이 없습니다"
+                >
+                  정답 없음
+                </span>
+              )}
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs ${
+                  q.status === "HUMAN_VERIFIED" || q.status === "AUTO_VERIFIED"
+                    ? "bg-green-100 text-green-700"
+                    : q.status === "UNVERIFIED"
+                      ? "bg-gray-100 text-gray-500"
+                      : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {q.status}
+              </span>
             </span>
           </button>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Structured per-question edit — the teacher-facing path for fields the
+ * OCR can never supply (answers/solutions on papers without a key).
+ * Every field becomes a canonical op in ONE /changes call. */
+function QuestionEditCard({
+  docId,
+  question,
+  onApplied,
+  onLog,
+}: {
+  docId: string;
+  question: QuestionSummary;
+  onApplied: () => void;
+  onLog: (line: string) => void;
+}) {
+  const [answer, setAnswer] = useState(question.answer ?? "");
+  const [solution, setSolution] = useState(question.solution ?? "");
+  const [points, setPoints] = useState(
+    question.points == null ? "" : String(question.points),
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const apply = async () => {
+    const tenant = activeTenant();
+    if (!tenant || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const head = await getHeadRevisionForTenant(tenant, docId);
+      if (!head?.id) throw new Error("canonical head가 없습니다");
+      const ops: Record<string, unknown>[] = [];
+      const target = question.id;
+      if (answer.trim() && answer.trim() !== (question.answer ?? "")) {
+        ops.push({ op: "SetAnswer", target_id: target, value: answer.trim() });
+      }
+      const curSol = question.solution ?? "";
+      if (solution.trim() && solution.trim() !== curSol) {
+        ops.push({ op: "SetSolution", target_id: target, value: solution });
+      }
+      const p = parseInt(points, 10);
+      if (Number.isInteger(p) && p > 0 && p !== question.points) {
+        ops.push({ op: "SetPoints", target_id: target, value: p });
+      }
+      if (!ops.length) {
+        setErr("변경된 값이 없습니다");
+        return;
+      }
+      const r = await applyChanges(tenant, docId, ops, head.id);
+      onLog(
+        `편집: ${question.label}번 ${ops.map((o) => o.op).join(", ")} → revision #${r?.data?.revision?.revision_no ?? "?"}`,
+      );
+      onApplied();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border bg-white p-3 text-sm shadow-sm">
+      <h3 className="mb-2 font-semibold">{question.label}번 직접 편집</h3>
+      <label className="mb-2 block text-xs text-gray-600">
+        정답
+        <input
+          className="mt-1 w-full rounded border px-2 py-1.5 text-sm"
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="예: ② 또는 42"
+        />
+      </label>
+      <label className="mb-2 block text-xs text-gray-600">
+        풀이 (한 줄 = 한 단계)
+        <textarea
+          className="mt-1 w-full rounded border px-2 py-1.5 text-sm"
+          rows={3}
+          value={solution}
+          onChange={(e) => setSolution(e.target.value)}
+          placeholder={"예:\n$x^2=4$이므로 $x=\\pm 2$\n조건에서 $x>0$이므로 답은 ②"}
+        />
+      </label>
+      <label className="mb-3 block text-xs text-gray-600">
+        배점
+        <input
+          className="mt-1 w-24 rounded border px-2 py-1.5 text-sm"
+          inputMode="numeric"
+          value={points}
+          onChange={(e) => setPoints(e.target.value)}
+        />
+      </label>
+      {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
+      <button
+        onClick={apply}
+        disabled={busy}
+        className="w-full rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+      >
+        {busy ? "적용 중…" : "적용 (canonical revision)"}
+      </button>
+    </div>
   );
 }

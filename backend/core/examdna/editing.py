@@ -18,6 +18,7 @@ from document.models import (
     Equation,
     Question,
     QuestionType,
+    Solution,
     TextSpan,
     VerificationStatus,
 )
@@ -28,6 +29,7 @@ _ATU_FIELD = {
     "type": (ATUKind.TEXT_TOKEN, "type"),
     "figure": (ATUKind.TEXT_TOKEN, "figure"),
     "answer": (ATUKind.TEXT_TOKEN, "answer"),
+    "solution": (ATUKind.TEXT_TOKEN, "solution"),
 }
 
 
@@ -88,6 +90,10 @@ def ops_to_change_ops(ops: list[dict]):
         elif field == "answer":
             change_ops.append(
                 ChangeOp(op="SetAnswer", target_id=target, value=value)
+            )
+        elif field == "solution":
+            change_ops.append(
+                ChangeOp(op="SetSolution", target_id=target, value=value)
             )
         elif field == "type":
             change_ops.append(
@@ -155,6 +161,20 @@ def _apply(question: Question, op: dict) -> tuple[str, Any]:
         question.points = value
     elif field == "answer":
         question.answer = Answer(value=value)
+    elif field == "solution":
+        steps = (
+            [str(s) for s in value.get("steps", [])]
+            if isinstance(value, dict)
+            else [s for s in str(value).splitlines() if s.strip()]
+        )
+        question.solution = Solution(
+            steps=[TextSpan(text=s) for s in steps],
+            concepts=(
+                [str(c) for c in value.get("concepts", [])]
+                if isinstance(value, dict)
+                else []
+            ),
+        )
     elif field == "type":
         value = QuestionType(str(value))
         question.type = value
