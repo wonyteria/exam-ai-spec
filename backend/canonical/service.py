@@ -583,10 +583,11 @@ class MutationService:
         summary: list[dict] = []
         for op in ops:
             if op.op == "ResolveATU":
-                atu = self._find_atu(doc, op.target_id)
+                q, atu = self._find_atu(doc, op.target_id)
                 self._check_old_digest(atu.value, op.expected_old_digest)
                 atu.value = op.value
                 atu.status = VerificationStatus.HUMAN_VERIFIED
+                self._sync_resolved_atu(doc, q, atu)
                 summary.append({"op": "ResolveATU", "atu_id": op.target_id})
             elif op.op == "SetMetadata":
                 if op.field not in type(doc.metadata).model_fields:
@@ -785,8 +786,93 @@ class MutationService:
         for q in doc.questions:
             for atu in q.atus:
                 if atu.id == atu_id:
-                    return atu
+                    return q, atu
         raise NotFoundError(f"atu {atu_id} not found")
+
+    def _sync_resolved_atu(self, doc: Document, q, atu) -> None:
+        """Propagate a human-resolved ATU into the derived field it backs.
+
+        `_materialize` (consensus) runs once at pipeline time and only
+        consumes already-verified ATUs — without this, resolving a
+        CONFLICT/UNVERIFIED body/choice ATU in review would never reach
+        `q.body`, so renderers and completeness checks would see an empty
+        question forever. Merge semantics: a span/choice/equation/figure
+        that already carries this ATU id is updated in place; otherwise
+        the resolved value is appended, preserving manual SetBody/SetChoice
+        edits that do not reference the ATU.
+        """
+        from document.models import Choice, Equation, QuestionType, TextSpan
+
+        field = atu.field
+        if field is None or atu.value is None:
+            return
+        if field == "number":
+            new_label = str(atu.value)
+            if any(x.id != q.id and x.label == new_label for x in doc.questions):
+                raise ConflictError(
+                    "NUMBER_EXISTS", f"question {new_label} already exists"
+                )
+            q.label = new_label
+        elif field == "body":
+            span = next((s for s in q.body if atu.id in s.atu_ids), None)
+            if span is not None:
+                span.text = str(atu.value)
+            else:
+                q.body.append(TextSpan(text=str(atu.value), atu_ids=[atu.id]))
+        elif field == "points":
+            try:
+                q.points = int(atu.value)
+            except (TypeError, ValueError):
+                pass
+        elif field == "type":
+            try:
+                q.type = QuestionType(str(atu.value))
+            except ValueError:
+                pass
+        elif field == "figure":
+            from core.examdna.source_truth.consensus import _materialize_figure
+
+            fig = _materialize_figure(atu, q)
+            fig.atu_ids = [atu.id]
+            for i, existing in enumerate(q.figures):
+                if atu.id in existing.atu_ids:
+                    q.figures[i] = fig
+                    break
+            else:
+                q.figures.append(fig)
+        elif field.startswith("choice:"):
+            label = field.split(":", 1)[1]
+            choice = next((c for c in q.choices if c.label == label), None)
+            if choice is None:
+                q.choices.append(
+                    Choice(
+                        label=label,
+                        body=[TextSpan(text=str(atu.value), atu_ids=[atu.id])],
+                    )
+                )
+                q.choices.sort(key=lambda c: c.label)
+            else:
+                span = next(
+                    (s for s in choice.body if atu.id in s.atu_ids), None
+                )
+                if span is not None:
+                    span.text = str(atu.value)
+                else:
+                    choice.body.append(
+                        TextSpan(text=str(atu.value), atu_ids=[atu.id])
+                    )
+        elif field.startswith("equation:"):
+            eq = next((e for e in q.equations if atu.id in e.atu_ids), None)
+            if eq is not None:
+                eq.latex = str(atu.value)
+            else:
+                q.equations.append(
+                    Equation(
+                        latex=str(atu.value),
+                        source=atu.source,
+                        atu_ids=[atu.id],
+                    )
+                )
 
     def _find_question(self, doc: Document, qid: Optional[str]):
         """Resolve an op target. Exact id wins; a number/label that maps to

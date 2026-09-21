@@ -30,6 +30,7 @@ from document.models import (
     Equation,
     Question,
     TextSpan,
+    VerificationStatus,
 )
 from tenancy.db import TenancyDB
 
@@ -442,3 +443,97 @@ def test_setfield_number_replaces_descriptive_label(service, cstore):
     d2 = _content(cstore, cstore.get_head_revision(d.id))
     assert d2.questions[0].label == "7"
     assert d2.questions[0].number == 99  # sequence position unchanged
+
+
+# --- ResolveATU materialization into derived fields --------------------------
+
+
+def _doc_with_unverified_atu() -> Document:
+    d = Document(tenant_id="tn_1")
+    q = Question(
+        number=1,
+        label="?mark1",
+        body=[],
+        atus=[
+            ATU(kind=ATUKind.TEXT_TOKEN, field="body", value=None,
+                status=VerificationStatus.CONFLICT),
+            ATU(kind=ATUKind.CHOICE, field="choice:①", value=None,
+                status=VerificationStatus.UNVERIFIED),
+            ATU(kind=ATUKind.QUESTION_NUMBER, field="number", value=None,
+                status=VerificationStatus.UNVERIFIED),
+        ],
+    )
+    d.questions.append(q)
+    return d
+
+
+def test_resolve_atu_materializes_body(service, cstore):
+    """Resolving a body ATU must reach q.body — materialization only ran
+    at pipeline time, so without sync the renderer sees an empty body."""
+    d = _doc_with_unverified_atu()
+    rev = service.create_revision(d, "tn_1", "alice")
+    atu = d.questions[0].atus[0]
+    rev2 = service.apply(
+        "tn_1", "alice", d.id, rev.id,
+        [ChangeOp(op="ResolveATU", target_id=atu.id, value="확정된 본문")],
+        route="review.resolve",
+    )
+    d2 = _content(cstore, rev2)
+    q = d2.questions[0]
+    assert [s.text for s in q.body] == ["확정된 본문"]
+    assert atu.id in q.body[0].atu_ids
+
+
+def test_resolve_atu_updates_span_in_place(service, cstore):
+    """Re-resolving the same ATU updates its span, never duplicates."""
+    d = _doc_with_unverified_atu()
+    rev = service.create_revision(d, "tn_1", "alice")
+    atu_id = d.questions[0].atus[0].id
+    rev2 = service.apply(
+        "tn_1", "alice", d.id, rev.id,
+        [ChangeOp(op="ResolveATU", target_id=atu_id, value="첫 확정")],
+        route="review.resolve",
+    )
+    rev3 = service.apply(
+        "tn_1", "alice", d.id, rev2.id,
+        [ChangeOp(op="ResolveATU", target_id=atu_id, value="재확정")],
+        route="review.resolve",
+    )
+    d3 = _content(cstore, rev3)
+    assert [s.text for s in d3.questions[0].body] == ["재확정"]
+
+
+def test_resolve_atu_materializes_choice_and_number(service, cstore):
+    d = _doc_with_unverified_atu()
+    rev = service.create_revision(d, "tn_1", "alice")
+    choice_atu = d.questions[0].atus[1]
+    num_atu = d.questions[0].atus[2]
+    rev2 = service.apply(
+        "tn_1", "alice", d.id, rev.id,
+        [
+            ChangeOp(op="ResolveATU", target_id=choice_atu.id, value="보기 내용"),
+            ChangeOp(op="ResolveATU", target_id=num_atu.id, value="4"),
+        ],
+        route="review.resolve",
+    )
+    d2 = _content(cstore, rev2)
+    q = d2.questions[0]
+    assert q.label == "4"
+    assert q.choices[0].label == "①"
+    assert q.choices[0].body[0].text == "보기 내용"
+
+
+def test_resolve_atu_number_collision_fails_closed(service, cstore):
+    """Resolving a number ATU to an existing label must be refused."""
+    d = _doc_with_unverified_atu()
+    d.questions.append(Question(number=2, label="4"))
+    rev = service.create_revision(d, "tn_1", "alice")
+    num_atu = d.questions[0].atus[2]
+    with pytest.raises(ConflictError) as ei:
+        service.apply(
+            "tn_1", "alice", d.id, rev.id,
+            [ChangeOp(op="ResolveATU", target_id=num_atu.id, value="4")],
+            route="review.resolve",
+        )
+    assert ei.value.code == "NUMBER_EXISTS"
+    assert cstore.get_document(d.id).head_revision_id == rev.id
