@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { activeTenant, agentPropose, applyChanges, API, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
+import { activeTenant, agentPropose, applyChanges, API, getDocument, listRevisions, redoDoc, sendEdit, undoDoc } from "@/lib/api";
 import type { AgentProposal } from "@/lib/api";
 import Modal from "@/components/Modal";
 
@@ -263,8 +263,7 @@ function QuestionList({ docId }: { docId: string }) {
   >([]);
 
   useEffect(() => {
-    fetch(`${API}/api/documents/${docId}`)
-      .then((r) => r.json())
+    getDocument(docId)
       .then((doc) =>
         setQuestions(
           (doc.questions ?? []).map(

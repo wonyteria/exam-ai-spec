@@ -66,6 +66,11 @@ function JobView() {
   const stages = [...new Set(events.filter((e) => e.stage !== "pipeline").map((e) => e.stage))];
   const finished = ["COMPLETED", "NEEDS_REVIEW", "FAILED"].includes(state);
   const lastStage = stages.at(-1);
+  const stageOrder = Object.keys(STAGE_LABELS).filter((s) => s !== "pipeline");
+  const doneCount = finished
+    ? stageOrder.length
+    : Math.max(0, stages.length - 1);
+  const pct = Math.round((doneCount / stageOrder.length) * 100);
 
   return (
     <main className="mx-auto max-w-3xl p-8">
@@ -88,6 +93,31 @@ function JobView() {
           {state}
         </span>
       </p>
+      {!finished && (
+        <div className="mb-6">
+          <div className="mb-1 flex justify-between text-xs text-gray-500">
+            <span>
+              {doneCount}/{stageOrder.length} 단계
+            </span>
+            <span>{pct}%</span>
+          </div>
+          <div
+            className="h-2 overflow-hidden rounded-full bg-gray-200"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            실제 OCR은 페이지당 수 분 걸릴 수 있습니다 — 페이지를 닫지 마세요
+          </p>
+        </div>
+      )}
       {offline && <p className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">오프라인 상태입니다.</p>}
       {error && <p className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 

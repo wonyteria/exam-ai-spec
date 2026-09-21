@@ -228,6 +228,13 @@ export async function getReviewItems(docId: string): Promise<ReviewItemsResponse
   return res.json();
 }
 
+// Canonical-aware document read (canonical head when a record exists).
+export async function getDocument(docId: string) {
+  const res = await apiFetch(`/api/documents/${docId}`, { cache: "no-store" });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
 export async function resolveItem(docId: string, atuId: string, value: string) {
   const res = await apiFetch(`/api/documents/${docId}/review-items/${atuId}`, {
     method: "POST",

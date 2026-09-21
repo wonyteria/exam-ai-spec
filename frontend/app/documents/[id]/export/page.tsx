@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { API, exportDoc } from "@/lib/api";
+import { API, exportDoc, getDocument } from "@/lib/api";
 
 const GATE_LABEL: Record<string, string> = {
   text_conflict: "텍스트 충돌",
@@ -34,15 +34,14 @@ export default function ExportPage() {
   const [mode, setMode] = useState("STUDENT_WITH_ENDNOTES");
 
   useEffect(() => {
-    fetch(`${API}/api/documents/${id}`)
-      .then((r) => r.json())
+    getDocument(id)
       .then((doc) => {
         const g = doc.verification?.gate ?? null;
         setGate(g);
         setMissing(Array.isArray(g?.missing_numbers) ? g.missing_numbers : []);
         setStatus(doc.verification?.status ?? "");
       })
-      .catch(() => {});
+      .catch((e) => setError(String(e)));
   }, [id]);
 
   const doExport = async (format: string) => {

@@ -192,20 +192,39 @@ export default function UploadPage() {
         <div className="w-full max-w-2xl">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">문서 보관함</h2>
           <ul className="divide-y rounded-xl border border-gray-200 bg-white">
-            {docs.map((d) => (
-              <li key={d.id}>
-                <Link
-                  href={`/documents/${d.id}/editor`}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
-                >
-                  <span className="text-sm">
-                    {String(d.metadata?.school || "시험지")} — {d.questions}문항,{" "}
-                    {d.pages}페이지
-                  </span>
-                  <span className="text-xs text-gray-500">{d.status}</span>
-                </Link>
-              </li>
-            ))}
+            {docs.map((d) => {
+              const needsReview = !["HUMAN_VERIFIED", "AUTO_VERIFIED"].includes(
+                d.status,
+              );
+              const badge = d.status === "HUMAN_VERIFIED" ||
+                d.status === "AUTO_VERIFIED"
+                ? "bg-green-100 text-green-800"
+                : d.status === "CONFLICT" || d.status === "UNREADABLE"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-amber-100 text-amber-800";
+              return (
+                <li key={d.id}>
+                  <Link
+                    href={
+                      needsReview
+                        ? `/documents/${d.id}/review`
+                        : `/documents/${d.id}/editor`
+                    }
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                  >
+                    <span className="text-sm">
+                      {String(d.metadata?.school || "시험지")} — {d.questions}
+                      문항, {d.pages}페이지
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${badge}`}
+                    >
+                      {needsReview ? "검토 필요" : "검증 완료"}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

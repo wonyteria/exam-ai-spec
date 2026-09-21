@@ -43,6 +43,15 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   UNREADABLE: { label: "판독 불가", cls: "bg-red-100 text-red-800" },
 };
 
+const STATUS_FILTERS = ["ALL", "CONFLICT", "UNVERIFIED", "UNREADABLE"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+const FILTER_LABEL: Record<StatusFilter, string> = {
+  ALL: "전체",
+  CONFLICT: "충돌",
+  UNVERIFIED: "미검증",
+  UNREADABLE: "판독 불가",
+};
+
 function cropUrl(docId: string, source: ReviewItem["source"]): string | null {
   if (!source || !source.bbox) return null;
   const b = source.bbox as { x: number; y: number; w: number; h: number };
@@ -66,6 +75,8 @@ export default function ReviewPage() {
   const [renumberValues, setRenumberValues] = useState<Record<string, string>>({});
   const [renumbering, setRenumbering] = useState<Record<string, boolean>>({});
   const [renumberMsg, setRenumberMsg] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [resolvedCount, setResolvedCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +118,7 @@ export default function ReviewPage() {
     try {
       await resolveItem(id, atuId, value);
       setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
+      setResolvedCount((n) => n + 1);
     } finally {
       setResolving((r) => ({ ...r, [atuId]: false }));
     }
@@ -163,6 +175,24 @@ export default function ReviewPage() {
 
   const pending = items.length + flags.length + missingNumbers.length;
 
+  const filtered =
+    statusFilter === "ALL"
+      ? items
+      : items.filter((i) => i.status === statusFilter);
+  const statusCounts = items.reduce<Record<string, number>>((acc, i) => {
+    acc[i.status] = (acc[i.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  // Group consecutive items under their question header — a reviewer
+  // decides per-question, and the ?-number control belongs to the group.
+  const groups: { key: string; items: ReviewItem[] }[] = [];
+  for (const it of filtered) {
+    const key = it.question_label ?? String(it.question_number);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(it);
+    else groups.push({ key, items: [it] });
+  }
+
   return (
     <main className="mx-auto max-w-4xl p-8">
       <header className="mb-6">
@@ -171,11 +201,42 @@ export default function ReviewPage() {
           판단 불가 항목만 확인합니다 — 전체 검수는 필요 없습니다
         </p>
         {loaded && pending > 0 && (
-          <span className="mt-2 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
-            {pending}건 대기
-          </span>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+              {pending}건 대기
+            </span>
+            {resolvedCount > 0 && (
+              <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                {resolvedCount}건 확정
+              </span>
+            )}
+          </div>
         )}
       </header>
+
+      {items.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-1.5" role="tablist">
+          {STATUS_FILTERS.map((f) => {
+            const n = f === "ALL" ? items.length : (statusCounts[f] ?? 0);
+            const active = statusFilter === f;
+            return (
+              <button
+                key={f}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setStatusFilter(f)}
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  active
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {FILTER_LABEL[f]} {n}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {error && (
         <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
@@ -287,109 +348,140 @@ export default function ReviewPage() {
         </p>
       )}
 
-      {items.map((item) => {
-        const status = STATUS_LABEL[item.status] ?? {
-          label: item.status,
-          cls: "bg-gray-100 text-gray-700",
-        };
-        const crop = cropUrl(id, item.source);
+      {groups.map((g) => {
+        const ambiguous = g.key.startsWith("?");
         return (
-          <div
-            key={item.atu_id}
-            className="mb-4 rounded-lg border bg-white p-4 shadow-sm"
+          <section
+            key={g.key}
+            className="mb-4 rounded-lg border bg-white shadow-sm"
           >
-            <div className="mb-3 flex items-center gap-2 text-sm">
-              <span className="font-semibold">
-                {item.question_label ?? item.question_number}번 문항
+            <div className="flex flex-wrap items-center gap-2 border-b bg-gray-50 px-4 py-2.5">
+              <span className="font-semibold">{g.key}번 문항</span>
+              <span className="text-xs text-gray-500">
+                {g.items.length}건
               </span>
-              <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-                {KIND_LABEL[item.kind] ?? item.kind}
-              </span>
-              <span className={`rounded px-2 py-0.5 ${status.cls}`}>
-                {status.label}
-              </span>
+              {ambiguous && (
+                <span className="ml-auto flex items-center gap-2 text-sm">
+                  <span className="text-amber-800">인쇄 번호 미확정</span>
+                  <input
+                    className="w-20 rounded border px-2 py-1 text-sm"
+                    placeholder="번호"
+                    inputMode="numeric"
+                    value={renumberValues[g.key] ?? ""}
+                    onChange={(e) =>
+                      setRenumberValues((v) => ({
+                        ...v,
+                        [g.key]: e.target.value,
+                      }))
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && renumber(g.key)}
+                  />
+                  <button
+                    onClick={() => renumber(g.key)}
+                    disabled={Boolean(renumbering[g.key])}
+                    className="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
+                  >
+                    {renumbering[g.key] ? "확정 중…" : "번호 확정"}
+                  </button>
+                </span>
+              )}
             </div>
 
-            {item.question_label?.startsWith("?") && (
-              <div className="mb-3 flex items-center gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
-                <span className="text-amber-800">인쇄 번호 미확정</span>
-                <input
-                  className="w-20 rounded border px-2 py-1 text-sm"
-                  placeholder="번호"
-                  inputMode="numeric"
-                  value={renumberValues[item.question_label] ?? ""}
-                  onChange={(e) =>
-                    setRenumberValues((v) => ({
-                      ...v,
-                      [item.question_label as string]: e.target.value,
-                    }))
-                  }
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && renumber(item.question_label as string)
-                  }
-                />
-                <button
-                  onClick={() => renumber(item.question_label as string)}
-                  disabled={Boolean(renumbering[item.question_label])}
-                  className="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
-                >
-                  {renumbering[item.question_label] ? "확정 중…" : "번호 확정"}
-                </button>
-              </div>
-            )}
-
-            {crop && (
-              <div className="mb-3">
-                <p className="mb-1 text-xs font-medium text-gray-500">원본 영역</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={crop}
-                  alt="원본 영역"
-                  className="max-h-64 rounded border bg-gray-50 object-contain"
-                />
-                <button
-                  className="mt-2 rounded border px-2 py-1 text-xs"
-                  onClick={() => setCropOpen(crop)}
-                >
-                  원본 비교 확대
-                </button>
-              </div>
-            )}
-
-            {item.candidates.length > 0 && (
-              <div className="mb-3 space-y-1 text-sm">
-                {item.candidates.map((c, i) => (
-                  <div key={i} className="flex items-baseline gap-2">
-                    <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
-                      {c.provider}
+            {g.items.map((item) => {
+              const status = STATUS_LABEL[item.status] ?? {
+                label: item.status,
+                cls: "bg-gray-100 text-gray-700",
+              };
+              const crop = cropUrl(id, item.source);
+              return (
+                <div key={item.atu_id} className="border-b p-4 last:border-b-0">
+                  <div className="mb-3 flex items-center gap-2 text-sm">
+                    <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+                      {KIND_LABEL[item.kind] ?? item.kind}
                     </span>
-                    <span className="break-all text-gray-700">
-                      {JSON.stringify(c.value)}
+                    <span className={`rounded px-2 py-0.5 ${status.cls}`}>
+                      {status.label}
                     </span>
                   </div>
-                ))}
-              </div>
-            )}
 
-            <div className="flex gap-2">
-              <input
-                className="flex-1 rounded border px-3 py-1.5 text-sm"
-                placeholder="확정 값 입력"
-                value={values[item.atu_id] ?? ""}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, [item.atu_id]: e.target.value }))
-                }
-                onKeyDown={(e) => e.key === "Enter" && resolve(item.atu_id)}
-              />
-              <button
-                onClick={() => resolve(item.atu_id)}
-                disabled={Boolean(resolving[item.atu_id])}
-                className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
-              >
-                {resolving[item.atu_id] ? "확정 중…" : "확정"}
-              </button>
-            </div>
-          </div>
+                  {crop && (
+                    <div className="mb-3">
+                      <p className="mb-1 text-xs font-medium text-gray-500">
+                        원본 영역
+                      </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={crop}
+                        alt="원본 영역"
+                        className="max-h-64 rounded border bg-gray-50 object-contain"
+                      />
+                      <button
+                        className="mt-2 rounded border px-2 py-1 text-xs"
+                        onClick={() => setCropOpen(crop)}
+                      >
+                        원본 비교 확대
+                      </button>
+                    </div>
+                  )}
+
+                  {item.candidates.length > 0 && (
+                    <div className="mb-3 space-y-1 text-sm">
+                      <p className="text-xs font-medium text-gray-500">
+                        OCR 후보 — 클릭하면 입력됩니다
+                      </p>
+                      {item.candidates.map((c, i) => (
+                        <div key={i} className="flex items-baseline gap-2">
+                          <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+                            {c.provider}
+                          </span>
+                          <button
+                            type="button"
+                            className="break-all rounded px-1 text-left text-gray-700 hover:bg-blue-50 hover:text-blue-800"
+                            title="이 값을 확정 값으로 사용"
+                            onClick={() =>
+                              setValues((v) => ({
+                                ...v,
+                                [item.atu_id]:
+                                  typeof c.value === "string"
+                                    ? c.value
+                                    : JSON.stringify(c.value),
+                              }))
+                            }
+                          >
+                            {JSON.stringify(c.value)}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded border px-3 py-1.5 text-sm"
+                      placeholder="확정 값 입력"
+                      value={values[item.atu_id] ?? ""}
+                      onChange={(e) =>
+                        setValues((v) => ({
+                          ...v,
+                          [item.atu_id]: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && resolve(item.atu_id)
+                      }
+                    />
+                    <button
+                      onClick={() => resolve(item.atu_id)}
+                      disabled={Boolean(resolving[item.atu_id])}
+                      className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+                    >
+                      {resolving[item.atu_id] ? "확정 중…" : "확정"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
         );
       })}
       <Modal
