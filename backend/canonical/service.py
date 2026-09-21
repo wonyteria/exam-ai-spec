@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 from difflib import SequenceMatcher
@@ -25,6 +26,7 @@ from .models import (
     RevisionMode,
     SourceManifest,
     new_id,
+    canonical_json,
     sha256_json,
 )
 from .policy import CONTENT_CHECKS_V1, restore_policy
@@ -77,7 +79,31 @@ _CIRCLED_DIGITS = {
 
 def _norm_answer(value: Any) -> str:
     s = str(value).strip().rstrip(".")
-    return _CIRCLED_DIGITS.get(s, s)
+    s = _CIRCLED_DIGITS.get(s, s)
+    # Unit decorations don't change the value: '76°', '76도', '5cm' all
+    # record the same answer as '76' / '5'.
+    s = re.sub(
+        r"(?<=[\d.])(㎠|㎝|㎢|cm²|cm³|cm|mm|km|m|°|도|개|자리)$", "", s.strip()
+    )
+    return s.strip()
+
+
+def _answers_match(recorded: Any, solver: Any) -> bool:
+    """Agreement between a recorded answer and a solver answer. Exact
+    after normalization for choices/numbers; for descriptive answers the
+    solver may return a full sentence, so the normalized recorded key
+    only needs to be contained — but numeric keys never use containment
+    ('7' must not match inside '76')."""
+    a, b = _norm_answer(recorded), _norm_answer(solver)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    key = re.sub(r"[^\w가-힣]", "", a)
+    hay = re.sub(r"[^\w가-힣]", "", b)
+    if not key or key.isdigit():
+        return False
+    return len(key) >= 2 and key in hay
 
 
 def _audit_field_match(field: str, audit_text: str) -> bool:
@@ -91,6 +117,26 @@ def _audit_field_match(field: str, audit_text: str) -> bool:
         for b in SequenceMatcher(None, field, audit_text).get_matching_blocks()
     )
     return matched / max(1, len(field)) >= 0.8
+
+
+def _audit_candidate_text(value: Any) -> str:
+    """Flatten an auditor candidate into comparable text. Raw OCR
+    providers return line strings; structured extractors (e.g. Gemini)
+    return dicts — their leaf values are joined, with number/points
+    emitted in the printed forms ('7.', '3점') the audit looks for."""
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for k, v in value.items():
+            if k == "number" and v not in (None, ""):
+                parts.append(f"{v}.")
+            elif k == "points" and v not in (None, ""):
+                parts.append(f"{v}점")
+            else:
+                parts.append(_audit_candidate_text(v))
+        return " ".join(p for p in parts if p)
+    if isinstance(value, (list, tuple)):
+        return " ".join(_audit_candidate_text(v) for v in value)
+    return str(value)
 
 
 _CONTENT_Q_EXCLUDE = frozenset({"answer", "solution", "verification"})
@@ -165,14 +211,14 @@ def revision_hashes(
 
 
 def _stored_content(doc: Document) -> dict:
-    """The canonical stored form of a document: a JSON-mode dump passed
-    through model validation so raw dicts assigned via SetField become
-    typed sub-models with their defaults populated. Writers must hash
-    and store THIS dict — never a live model that may hold unvalidated
-    field values."""
-    return Document.model_validate(doc.model_dump(mode="json")).model_dump(
-        mode="json"
-    )
+    """The canonical stored form of a document: validate the dump so raw
+    dicts assigned via SetField become typed sub-models with defaults
+    populated, then round-trip through canonical_json — the exact bytes
+    the store persists (its NaN literal keeps non-finite values visible
+    to the math/figure validator, unlike a mode='json' dump which would
+    silently coerce them to null)."""
+    validated = Document.model_validate(doc.model_dump())
+    return json.loads(canonical_json(validated.model_dump()))
 
 
 class MutationService:
@@ -1070,15 +1116,31 @@ class MutationService:
             if hasattr(s, "solve_batch")
         ]
         solver_results: Optional[tuple[dict, dict]] = None
+        solver_error: Optional[str] = None
         if solvers and doc.questions:
-            solver_results = self._solver_passes(doc, solvers[0])
+            try:
+                solver_results = self._solver_passes(doc, solvers[0])
+            except Exception as exc:  # noqa: BLE001
+                # Provider outage/quota is unavailable evidence, not a
+                # crash — the solver checks record NOT_RUN with the
+                # reason so the gate stays fail-closed without 500s.
+                solver_error = f"{type(exc).__name__}: {exc}"
 
         for kind in self.store.get_checks(revision_id):
             if kind.check_kind not in IMPLEMENTED_CHECKERS:
-                if kind.check_kind in PROVIDER_CHECKERS and solver_results is not None:
-                    state, summary = self._solver_check(
-                        kind.check_kind, doc, solver_results
-                    )
+                if kind.check_kind in PROVIDER_CHECKERS:
+                    if solver_results is not None:
+                        state, summary = self._solver_check(
+                            kind.check_kind, doc, solver_results
+                        )
+                    elif solver_error is not None:
+                        state, summary = (
+                            CheckState.NOT_RUN,
+                            f"solver provider error: {solver_error}",
+                        )
+                    else:
+                        results.append(kind)
+                        continue
                 else:
                     results.append(kind)
                     continue
@@ -1388,7 +1450,9 @@ class MutationService:
                 unaudited += 1
                 continue
             audit_text = self._norm_audit(
-                " ".join(str(c.value) for c in cands if c.value)
+                " ".join(
+                    _audit_candidate_text(c.value) for c in cands if c.value
+                )
             )
             if not audit_text:
                 unaudited += 1
@@ -1486,8 +1550,8 @@ class MutationService:
     def _spans_text(spans) -> str:
         return "".join(s.text for s in spans)
 
-    def _problem_payload(self, q) -> dict:
-        return {
+    def _problem_payload(self, q, stem_by_id: Optional[dict] = None) -> dict:
+        payload = {
             "number": q.label or str(q.number),
             "type": q.type.value if hasattr(q.type, "value") else q.type,
             "points": q.points,
@@ -1500,6 +1564,12 @@ class MutationService:
                 {"labels": f.labels, "topology": f.topology} for f in q.figures
             ],
         }
+        if q.parent_id and stem_by_id and q.parent_id in stem_by_id:
+            # A shared-stem child is unsolvable without its parent's
+            # setup — send the stem so the solver sees the same context
+            # a student would.
+            payload["shared_stem"] = stem_by_id[q.parent_id]
+        return payload
 
     @staticmethod
     def _batch_answers(candidates) -> dict[str, str]:
@@ -1522,8 +1592,19 @@ class MutationService:
     def _solver_passes(self, doc: Document, solver) -> tuple[dict, dict]:
         """Two independent solver passes. run=1 carries a different prompt,
         so the second pass is a real call — never a cache hit replayed as
-        an independent opinion (02/A34)."""
-        problems = [self._problem_payload(q) for q in doc.questions]
+        an independent opinion (02/A34). Shared-stem parents are excluded:
+        their sub-questions are verified individually, and a parent asked
+        alone produces a compound answer string that cannot be normalized
+        against its leaf entries."""
+        parents = {q.parent_id for q in doc.questions if q.parent_id}
+        stem_by_id = {
+            q.id: self._spans_text(q.body) for q in doc.questions if q.id in parents
+        }
+        problems = [
+            self._problem_payload(q, stem_by_id)
+            for q in doc.questions
+            if q.id not in parents
+        ]
         run0 = self._batch_answers(solver.solve_batch(problems, run=0))
         run1 = self._batch_answers(solver.solve_batch(problems, run=1))
         return run0, run1
@@ -1541,7 +1622,9 @@ class MutationService:
                     CheckState.FAILED,
                     "no comparable solver results (independent pass missing)",
                 )
-            disagree = sorted(n for n in compared if run0[n] != run1[n])
+            disagree = sorted(
+                n for n in compared if not _answers_match(run0[n], run1[n])
+            )
             if disagree:
                 return (
                     CheckState.FAILED,
@@ -1562,7 +1645,9 @@ class MutationService:
                     CheckState.FAILED,
                     "recorded answers and solver output share no question ids",
                 )
-            mismatch = sorted(n for n in compared if recorded[n] != run0[n])
+            mismatch = sorted(
+                n for n in compared if not _answers_match(recorded[n], run0[n])
+            )
             if mismatch:
                 return (
                     CheckState.FAILED,

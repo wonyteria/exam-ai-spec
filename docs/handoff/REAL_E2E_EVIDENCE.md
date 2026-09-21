@@ -219,3 +219,53 @@ real document was unreleasable no matter how much review was done.
   questions now require answers (honest, expected).
 - New SetSolution canonical op + editor quick-edit card give the
   human path for answers/solutions that no OCR can supply.
+
+
+## Full check pass + real solver + final export (rev 67, doc_8dc95bea7fcb)
+
+Final head rev_eee12e9857ea (rev 67). All 11 content checks PASSED,
+including the two solver-backed checks against real Gemini API calls:
+
+- SOLVE_TWO_INDEPENDENT_AGREEMENT — PASSED (two independent
+  gemini-3.6-flash batch passes, chunked at 10 problems per call)
+- ANSWER_SOLUTION_LOGIC — PASSED (recorded answers match solver output)
+- ORIGINAL_SOURCE_FIDELITY — PASSED (fresh PaddleOCR audit)
+- APPROVED_EDIT_CONFORMANCE — PASSED (67 revisions audited)
+
+The solver caught one real wrong answer: Q4 (직각삼각형 합동 조건) was
+recorded as ④(ㄱ,ㄷ) but two independent solver runs and the grading
+marks on the source page agree the intended answer is ③(ㄷ) — '두 변의
+길이가 각각 같다' is the classic non-corresponding-sides trap. Answer
+and solution corrected in rev 67.
+
+Bugs fixed this round:
+- APPROVED_EDIT_CONFORMANCE audited re-validated models instead of the
+  stored snapshot, permanently failing revisions whose content held raw
+  dict field values. Payload hashing now operates on the stored content
+  dict; writers hash the same normalized dump they store.
+- SetField raw-dict values could enter snapshots unnormalized; writers
+  now validate+normalize before hashing/storing (_stored_content).
+- mode='json' dump silently coerced NaN scene props to null, defeating
+  the malicious-scene check; storage keeps canonical_json's NaN literal.
+- VERIFIED_FINAL discard flip was computed after the hash boundary and
+  never reached stored snapshots.
+- Gemini solve_batch sent all problems in one call (output truncation
+  -> silent empty results); now chunked 10/call.
+- _generate_json retried cached malformed responses identically; a
+  retry nonce now defeats the cache.
+- Solver provider errors (503/quota) crashed the whole check run; they
+  now record NOT_RUN with the reason (fail-closed, no 500).
+- Source-fidelity audit treated structured-extractor candidates
+  (Gemini dicts) as raw text; dict values are flattened to printed
+  forms ('7.', '3점') for comparison.
+- Solver answer comparison was exact-string only; units/degrees and
+  descriptive-answer sentences now match via _answers_match
+  (containment disabled for pure-numeric keys).
+- Shared-stem children were sent to the solver without context and
+  unanswerable; payloads now carry shared_stem. Parent stems are
+  excluded from solver problems (compound answers can't normalize).
+
+Final export verified end-to-end: three artifacts FINAL_ELIGIBLE ->
+POST /exports promoted to FINAL -> purpose=final download bytes match
+the proof-bound sha256 for hwpx (PK zip), hwp (CFB D0CF11E0, real
+Hancom round-trip), pdf.

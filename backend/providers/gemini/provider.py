@@ -150,19 +150,28 @@ class GeminiProvider:
         ]
 
     def solve_batch(self, problems: list[dict[str, Any]], run: int = 0) -> list[Candidate]:
-        """Solve many questions in one call; returns one Candidate with the
+        """Solve questions in chunked calls; returns one Candidate with the
         per-question result list. `run` varies the prompt so consensus runs
-        are real calls, not cache hits."""
-        prompt = _SOLVE_BATCH_PROMPT + "\n\n문제들:\n" + json.dumps(problems, ensure_ascii=False)
-        if run:
-            prompt += f"\n\n(독립 검증 {run + 1}회차)"
-        try:
-            data = self._generate_json([prompt])
-        except (json.JSONDecodeError, DailyQuotaExhausted):
-            data = None
-        if not isinstance(data, list):
-            return [Candidate(provider=self.name, value=[], confidence=0.0)]
-        return [Candidate(provider=self.name, value=data, confidence=0.85)]
+        are real calls, not cache hits. Large batches overflow the output
+        budget (truncated JSON → parse failure), so problems are solved
+        10 at a time."""
+        out: list[Any] = []
+        for i in range(0, len(problems), 10):
+            chunk = problems[i : i + 10]
+            prompt = (
+                _SOLVE_BATCH_PROMPT
+                + "\n\n문제들:\n"
+                + json.dumps(chunk, ensure_ascii=False)
+            )
+            if run:
+                prompt += f"\n\n(독립 검증 {run + 1}회차)"
+            try:
+                data = self._generate_json([prompt])
+            except (json.JSONDecodeError, DailyQuotaExhausted):
+                data = None
+            if isinstance(data, list):
+                out.extend(data)
+        return [Candidate(provider=self.name, value=out, confidence=0.85 if out else 0.0)]
 
     def detect_regions(self, image: Path) -> list[Candidate]:
         try:
@@ -246,18 +255,29 @@ class GeminiProvider:
     def _generate_json(self, parts: list[Any], prompt: str | None = None) -> Any:
         from google.genai import types
 
-        contents = [*parts, prompt] if prompt else parts
-        resp = self._call(
-            contents,
-            self._config(
-                types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0,
-                    max_output_tokens=32768,
-                )
-            ),
-        )
-        return _parse_json(resp.text)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            # A nonce defeats the response cache: a truncated/malformed
+            # reply is cached verbatim, so retrying the identical prompt
+            # would replay the same broken JSON forever.
+            contents = [*parts, prompt] if prompt else list(parts)
+            if attempt:
+                contents = [*contents, f"(재시도 {attempt})"]
+            resp = self._call(
+                contents,
+                self._config(
+                    types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0,
+                        max_output_tokens=32768,
+                    )
+                ),
+            )
+            try:
+                return _parse_json(resp.text)
+            except json.JSONDecodeError as exc:
+                last_exc = exc
+        raise last_exc
 
     def _generate_text(self, parts: list[Any]) -> str:
         from google.genai import types
