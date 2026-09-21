@@ -360,6 +360,20 @@ export default function ReviewPage() {
               <span className="text-xs text-gray-500">
                 {g.items.length}건
               </span>
+              {(() => {
+                const qsrc = g.items.find((i) => i.question_source?.bbox)
+                  ?.question_source;
+                const qcrop = qsrc ? cropUrl(id, qsrc) : null;
+                return qcrop ? (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 underline"
+                    onClick={() => setCropOpen(qcrop)}
+                  >
+                    문항 전체 보기
+                  </button>
+                ) : null;
+              })()}
               {ambiguous && (
                 <span className="ml-auto flex items-center gap-2 text-sm">
                   <span className="text-amber-800">인쇄 번호 미확정</span>

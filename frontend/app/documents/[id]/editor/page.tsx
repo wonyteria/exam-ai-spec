@@ -22,6 +22,7 @@ export default function EditorPage() {
   const [pendingProposal, setPendingProposal] = useState<AgentProposal | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
   const [focusQ, setFocusQ] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState("STUDENT_WITH_ENDNOTES");
 
   useEffect(() => {
     const tenant = activeTenant();
@@ -99,11 +100,24 @@ export default function EditorPage() {
           />
         </aside>
 
-        <section className="overflow-auto">
+        <section className="flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 border-b px-3 py-2">
+            <span className="text-xs font-medium text-gray-500">미리보기</span>
+            <select
+              className="rounded border px-2 py-1 text-xs"
+              value={previewMode}
+              onChange={(e) => setPreviewMode(e.target.value)}
+            >
+              <option value="STUDENT">학생용</option>
+              <option value="STUDENT_WITH_ENDNOTES">학생용+미주</option>
+              <option value="ANSWER_SOLUTION">정답·해설</option>
+              <option value="TEACHER">교사용</option>
+            </select>
+          </div>
           <iframe
-            key={`${previewKey}-${focusQ ?? ""}`}
-            src={`${API}/api/documents/${id}/preview${focusQ ? `#q-${focusQ}` : ""}`}
-            className="h-full w-full"
+            key={`${previewKey}-${previewMode}-${focusQ ?? ""}`}
+            src={`${API}/api/documents/${id}/preview?output_mode=${previewMode}${focusQ ? `#q-${focusQ}` : ""}`}
+            className="h-full w-full flex-1"
             title="preview"
           />
         </section>

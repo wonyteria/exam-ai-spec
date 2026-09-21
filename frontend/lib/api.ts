@@ -188,6 +188,7 @@ export interface ReviewItem {
   atu_id: string;
   question_number: number;
   question_label?: string;
+  question_source?: { page: number; bbox?: unknown } | null;
   kind: string;
   status: string;
   source: { page: number; bbox?: unknown } | null;

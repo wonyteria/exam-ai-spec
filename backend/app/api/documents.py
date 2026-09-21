@@ -175,6 +175,12 @@ def review_items(access=Depends(doc_access("review"))):
                         "atu_id": atu.id,
                         "question_number": q.number,
                         "question_label": q.label or str(q.number),
+                        # Whole-question region — reviewers confirm a
+                        # masked number against the full printed block,
+                        # not just the ATU-level crop.
+                        "question_source": (
+                            q.source.model_dump() if q.source else None
+                        ),
                         "kind": atu.kind.value,
                         "status": atu.status.value,
                         "source": atu.source.model_dump() if atu.source else None,
