@@ -380,3 +380,62 @@ def test_add_question_recovery(service, cstore):
             route="edits",
         )
     assert ei.value.code == "QUESTION_EXISTS"
+
+
+# --- masked-anchor renumbering -----------------------------------------------------
+
+
+def test_setfield_number_confirms_ambiguous_label(service, cstore):
+    """A '?'-labeled question (masked number anchor) is confirmed to its
+    real number via SetField number — the review path for ?markN items."""
+    d = Document(tenant_id="tn_1")
+    q = Question(number=99, label="?mark1", body=[TextSpan(text="본문")])
+    d.questions.append(q)
+    rev = service.create_revision(d, "tn_1", "alice")
+
+    rev2 = service.apply(
+        "tn_1", "alice", d.id, rev.id,
+        [ChangeOp(op="SetField", target_id="?mark1", field="number", value=4)],
+        route="review.renumber",
+    )
+    d2 = _content(cstore, rev2)
+    assert d2.questions[0].number == 4
+    assert d2.questions[0].label == "4"  # ?-label refreshed
+    assert rev2.revision_no == 2
+
+
+def test_setfield_number_rejects_collision(service, cstore):
+    doc, rev = _setup(service)
+    with pytest.raises(ConflictError) as ei:
+        service.apply(
+            "tn_1", "alice", doc.id, rev.id,
+            [ChangeOp(op="SetField", target_id="1", field="number", value=2)],
+            route="edits",
+        )
+    assert ei.value.code == "NUMBER_EXISTS"
+
+
+def test_setfield_number_rejects_non_integer(service, cstore):
+    doc, rev = _setup(service)
+    with pytest.raises(ValidationError):
+        service.apply(
+            "tn_1", "alice", doc.id, rev.id,
+            [ChangeOp(op="SetField", target_id="1", field="number", value="네")],
+            route="edits",
+        )
+
+
+def test_setfield_number_keeps_custom_label(service, cstore):
+    """A descriptive label (논술2) is not clobbered by renumbering."""
+    d = Document(tenant_id="tn_1")
+    q = Question(number=99, label="논술2", body=[TextSpan(text="본문")])
+    d.questions.append(q)
+    rev = service.create_revision(d, "tn_1", "alice")
+    service.apply(
+        "tn_1", "alice", d.id, rev.id,
+        [ChangeOp(op="SetField", target_id="논술2", field="number", value=7)],
+        route="edits",
+    )
+    d2 = _content(cstore, cstore.get_head_revision(d.id))
+    assert d2.questions[0].number == 7
+    assert d2.questions[0].label == "논술2"

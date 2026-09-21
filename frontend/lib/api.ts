@@ -308,6 +308,49 @@ export async function applyChanges(
   return res.json();
 }
 
+export interface RevisionInfo {
+  id: string;
+  revision_no: number;
+  mode: string;
+  created_at: number;
+}
+
+export async function getRevisions(
+  tenantId: string,
+  docId: string,
+): Promise<RevisionInfo[]> {
+  const res = await apiFetch(
+    `/api/v1/tenants/${tenantId}/documents/${docId}/revisions`,
+  );
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()).data.revisions;
+}
+
+/** Confirm the real printed number of a `?`-labeled (masked-anchor)
+ * question — canonical SetField number mutation under If-Match CAS. */
+export async function renumberQuestion(
+  tenantId: string,
+  docId: string,
+  questionLabel: string,
+  number: number,
+) {
+  const revs = await getRevisions(tenantId, docId);
+  const head = revs.reduce((a, b) => (b.revision_no > a.revision_no ? b : a));
+  return applyChanges(
+    tenantId,
+    docId,
+    [
+      {
+        op: "SetField",
+        target_id: questionLabel,
+        field: "number",
+        value: number,
+      },
+    ],
+    head.id,
+  );
+}
+
 export interface ComposeResult {
   exams: {
     document_id: string;

@@ -10,6 +10,7 @@ import {
   DocPage,
   getDocPages,
   getReviewItems,
+  renumberQuestion,
   resolveItem,
   ReviewItem,
   SourceManifestInfo,
@@ -61,6 +62,9 @@ export default function ReviewPage() {
   const [orderMsg, setOrderMsg] = useState<string | null>(null);
   const [resolving, setResolving] = useState<Record<string, boolean>>({});
   const [cropOpen, setCropOpen] = useState<string | null>(null);
+  const [renumberValues, setRenumberValues] = useState<Record<string, string>>({});
+  const [renumbering, setRenumbering] = useState<Record<string, boolean>>({});
+  const [renumberMsg, setRenumberMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +107,27 @@ export default function ReviewPage() {
       setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
     } finally {
       setResolving((r) => ({ ...r, [atuId]: false }));
+    }
+  };
+
+  // Confirm a masked-anchor question's real number — canonical SetField
+  // mutation, then refetch so every card shows the confirmed label.
+  const renumber = async (label: string) => {
+    const tenant = activeTenant();
+    const n = parseInt(renumberValues[label] ?? "", 10);
+    if (!tenant || !Number.isInteger(n) || n <= 0 || renumbering[label]) return;
+    setRenumbering((r) => ({ ...r, [label]: true }));
+    setRenumberMsg(null);
+    try {
+      await renumberQuestion(tenant, id, label, n);
+      const data = await getReviewItems(id);
+      setItems(data.items);
+      setFlags(data.logic_flags);
+      setMissingNumbers(data.missing_numbers ?? []);
+    } catch (e) {
+      setRenumberMsg(`번호 확정 실패: ${String(e)}`);
+    } finally {
+      setRenumbering((r) => ({ ...r, [label]: false }));
     }
   };
 
@@ -152,6 +177,12 @@ export default function ReviewPage() {
       {error && (
         <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
           {error}
+        </p>
+      )}
+
+      {renumberMsg && (
+        <p className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          {renumberMsg}
         </p>
       )}
 
@@ -262,6 +293,34 @@ export default function ReviewPage() {
                 {status.label}
               </span>
             </div>
+
+            {item.question_label?.startsWith("?") && (
+              <div className="mb-3 flex items-center gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+                <span className="text-amber-800">인쇄 번호 미확정</span>
+                <input
+                  className="w-20 rounded border px-2 py-1 text-sm"
+                  placeholder="번호"
+                  inputMode="numeric"
+                  value={renumberValues[item.question_label] ?? ""}
+                  onChange={(e) =>
+                    setRenumberValues((v) => ({
+                      ...v,
+                      [item.question_label as string]: e.target.value,
+                    }))
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && renumber(item.question_label as string)
+                  }
+                />
+                <button
+                  onClick={() => renumber(item.question_label as string)}
+                  disabled={Boolean(renumbering[item.question_label])}
+                  className="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
+                >
+                  {renumbering[item.question_label] ? "확정 중…" : "번호 확정"}
+                </button>
+              </div>
+            )}
 
             {crop && (
               <div className="mb-3">

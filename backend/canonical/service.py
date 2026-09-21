@@ -613,6 +613,40 @@ class MutationService:
                     if not hasattr(q, op.field or ""):
                         raise ValidationError(f"unknown question field {op.field}")
                     self._check_old_digest(getattr(q, op.field), op.expected_old_digest)
+                    if op.field == "number":
+                        # Renumbering is how a reviewer confirms a masked/
+                        # ambiguous anchor ("?mark1") to its real number.
+                        # Coerce, reject collisions, refresh a ?-style
+                        # label, and keep the question list sorted.
+                        try:
+                            new_num = int(str(op.value).strip())
+                        except (TypeError, ValueError):
+                            raise ValidationError(
+                                "question number must be an integer"
+                            )
+                        if new_num <= 0:
+                            raise ValidationError("question number must be > 0")
+                        if any(
+                            x.id != q.id and x.number == new_num
+                            for x in doc.questions
+                        ):
+                            raise ConflictError(
+                                "NUMBER_EXISTS",
+                                f"question {new_num} already exists",
+                            )
+                        if not q.label or q.label.startswith("?") or (
+                            q.label == str(q.number)
+                        ):
+                            q.label = str(new_num)
+                        q.number = new_num
+                        doc.questions.sort(key=lambda x: x.number)
+                        summary.append(
+                            {"op": op.op, "question": op.target_id,
+                             "field": "number", "value": new_num}
+                        )
+                        if op.propagate:
+                            summary.extend(self._propagate(doc, q, op))
+                        continue
                     value = op.value
                     if op.field == "type":
                         from document.models import QuestionType
