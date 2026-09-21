@@ -63,8 +63,11 @@ numbers on ONE exam — not a general accuracy claim.
 
 ## Known limitations (honest)
 
-- Q4 anchor still missed: detached number landed inside figure region, not at
-  column edge. Its body text merged into a neighboring block — visible in review.
+- Q4 now recovered: the masked-number box (grading ink fused to "4." —
+  detection box, no recognized text) is absorbed into its same-row body
+  line as a masked_anchor -> captured as ?mark1 for review. All 31
+  question units detected. missing_numbers still lists [4,10,16]
+  honestly — ambiguous anchors never claim a real number.
 - `missing_condition`/`unverified` remain high by design: OCR-only evidence
   cannot auto-verify critical fields; human review is the release path.
 - Bench metrics not yet computed for this family (expected.json exists for

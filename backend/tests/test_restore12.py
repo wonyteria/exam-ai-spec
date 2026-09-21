@@ -243,6 +243,73 @@ def test_circled_O_anchor_captured():
     assert "OAB=AC" in items[1]["body"]  # verbatim, nothing invented
 
 
+def test_empty_detection_masked_number_anchor():
+    """Grading ink fused to the printed number can leave a detection box
+    with no recognized text. Real fixture shape: the empty box's center
+    falls LEFT of the column gutter, so it must be absorbed into the
+    same-row body line in the right column to keep its question."""
+    def L(text, x0, x1, y):
+        return Candidate(provider="paddleocr", value=text, confidence=0.9,
+                         meta={"bbox_px": [x0, y, x1, y + 20]})
+    lines = [
+        L("1. 첫 번째 문제 [3점]", 50, 350, 100),
+        L("본문 일", 50, 380, 140),
+        L("보기 일", 50, 380, 170),
+        L("2. 두 번째 [3점]", 50, 350, 300),
+        L("본문 이", 50, 380, 340),
+        L("보기 이", 50, 380, 370),
+        L("3. 세 번째 [4점]", 400, 740, 100),        # right column
+        L("본문 삼", 400, 740, 140),
+        L("보기 삼", 400, 740, 170),
+        # masked "4." — boxed but no text; center lands left of the gutter
+        L("", 390, 420, 300),
+        L("직각삼각형의 합동 조건에 대한 설명", 415, 745, 300),   # same row
+        L("옳은 것은? [4점]", 415, 745, 330),
+        L("5. 다섯 번째 [3점]", 400, 740, 500),
+    ]
+    items, _ = segment_questions(lines)
+    assert [it["label"] for it in items] == ["1", "2", "3", "?mark1", "5"]
+    assert "합동 조건" in items[3]["body"]
+    assert items[3]["points"] == 4
+
+
+def test_empty_box_left_edge_same_column_anchor():
+    """Fallback path: an unmerged empty box at the column's left edge
+    followed by body-like text on the same row still opens a block."""
+    def L(text, x0, x1, y):
+        return Candidate(provider="paddleocr", value=text, confidence=0.9,
+                         meta={"bbox_px": [x0, y, x1, y + 20]})
+    lines = [
+        L("3. 세 번째 [3점]", 10, 300, 100),
+        L("", 10, 40, 300),                          # number-sized box…
+        L("직각삼각형의 합동 조건에 대한 설명", 130, 400, 300),  # …gap>80: no merge
+        L("옳은 것은? [4점]", 10, 400, 330),
+    ]
+    items, _ = segment_questions(lines)
+    assert [it["label"] for it in items] == ["3", "?mark1"]
+    assert "합동 조건" in items[1]["body"]
+
+
+def test_empty_detection_guards():
+    """Empty boxes are not anchors off the left edge, without body-like
+    following text, or oversized — they just join the current block."""
+    def L(text, x0, x1, y):
+        return Candidate(provider="paddleocr", value=text, confidence=0.9,
+                         meta={"bbox_px": [x0, y, x1, y + 20]})
+    lines = [
+        L("5. 다섯 번째 [3점]", 10, 300, 100),
+        L("", 10, 36, 300),                          # left edge but…
+        L("36+64=100", 10, 200, 300),                # …math-only next line
+        L("", 400, 430, 400),                        # not at left edge
+        L("본문 계속", 10, 400, 430),
+        L("", 10, 36, 600),                          # left edge but…
+        L("", 10, 36, 630),                          # …next is empty too
+        L("③ 55", 10, 100, 660),                     # …then a choice, no body
+    ]
+    items, _ = segment_questions(lines)
+    assert [it["label"] for it in items] == ["5"]
+
+
 def test_ambiguous_anchor_guards_reject_furniture():
     """Choice values, lone grading marks, and handwritten residues at the
     left edge must NOT open question blocks."""

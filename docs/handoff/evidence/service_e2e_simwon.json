@@ -1,9 +1,9 @@
 {
-  "captured_at": "2026-09-21T10:37:57",
+  "captured_at": "2026-09-21T11:35:10",
   "fixture": "simwon_2025_mid2 (5 pages, real photographed exam)",
-  "tenant_id": "tn_2e51812013ab",
-  "document_id": "doc_adad1908aa9e",
-  "job_id": "job_48e09d1d9a7b",
+  "tenant_id": "tn_19e257c96c4b",
+  "document_id": "doc_8dc95bea7fcb",
+  "job_id": "job_81ab4f82f333",
   "job_state": "NEEDS_REVIEW",
   "revisions": 2,
   "issues": 1,
@@ -20,7 +20,7 @@
     "REQUIRED_CONTENT_COVERAGE": "NOT_RUN",
     "BLOCKING_ISSUES_CLOSED": "FAILED"
   },
-  "review_items": 124,
+  "review_items": 128,
   "missing_numbers": [
     4,
     10,
@@ -28,28 +28,27 @@
   ],
   "artifacts": [
     {
-      "id": "art_28cd5971d6ce",
+      "id": "art_26bccb9b3110",
       "format": "hwpx",
       "state": "DRAFT",
-      "sha256": "57f2fed0d442d4e691495bbf9ba51adcb428652c584b4bc802075e9adeb487f1"
+      "sha256": "2487ad6333c081c4a66a2d80b479a8d0de4ef1d1dc4993ca1a7cf04e7cf89cdb"
     },
     {
-      "id": "art_d0f2a71b79e1",
+      "id": "art_7e0464ac551d",
       "format": "hwp",
       "state": "DRAFT",
-      "sha256": "1d3e3d1d1d842446d1be6a306d86131198d357ffa6add78fd8c69606919be112"
+      "sha256": "e4717c013508e17b0400b71441e47bb4d1f2f994450ad6c7dc784caa38f44a5a"
     },
     {
-      "id": "art_11477526af60",
+      "id": "art_d147f1693f67",
       "format": "pdf",
       "state": "DRAFT",
-      "sha256": "0a490dcf0650fee00603277ed689805640b2bae2e344428567c8a1804b358be5"
+      "sha256": "b35954c2fb373c8e8e9aff35e54f1bbfbf6adbf3c28037f3828ee3c24c49c4af"
     }
   ],
   "artifact_downloads": {
-    "art_28cd5971d6ce": 6131,
-    "art_d0f2a71b79e1": 29184,
-    "art_11477526af60": 18856
-  },
-  "artifact_download_note": "purpose=draft verified 200 + byte sizes on restarted server (same EXAMDNA_DATA)"
+    "art_26bccb9b3110": 6131,
+    "art_7e0464ac551d": 29696,
+    "art_d147f1693f67": 18912
+  }
 }

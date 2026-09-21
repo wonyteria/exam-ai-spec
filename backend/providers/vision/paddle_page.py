@@ -88,10 +88,15 @@ def segment_questions(cands) -> tuple[list[dict], int]:
     lines = []
     for c in cands:
         text = str(c.value).strip()
-        if not text:
-            continue
         bbox = (c.meta or {}).get("bbox_px")
+        if not text and bbox is None:
+            continue
+        # Keep empty-text detections with a bbox: a grading mark fused to
+        # the printed number can box it but yield no recognized text —
+        # that empty box may still be a question anchor.
         lines.append({"text": text, "conf": c.confidence, "bbox": bbox})
+
+    lines = _merge_masked_numbers(lines)
 
     blocks: list[list[dict]] = []
     dropped = 0
@@ -112,6 +117,43 @@ def segment_questions(cands) -> tuple[list[dict], int]:
             seen.add(item["label"])
             items.append(item)
     return items, dropped
+
+
+def _merge_masked_numbers(lines: list[dict]) -> list[dict]:
+    """Grading ink fused to a printed question number can leave a
+    detection box with no recognized text. When such a box immediately
+    precedes a same-row body-ish line, it is the masked number — absorb
+    it into that line (union bbox, `masked_anchor` flag) so the anchor
+    travels with its question into the right column. Unmerged empty
+    boxes are kept: they may still anchor by the empty-line rule.
+    """
+    out = []
+    for ln in lines:
+        b = ln["bbox"]
+        if ln["text"] or b is None:
+            out.append(ln)
+            continue
+        if b[2] - b[0] <= 80 and b[3] - b[1] <= 50:
+            for other in lines:
+                ob = other["bbox"]
+                if (
+                    other is not ln
+                    and other["text"]
+                    and ob is not None
+                    and abs(ob[1] - b[1]) < max(b[3] - b[1], 30)
+                    and -15 <= ob[0] - b[2] <= 80
+                    and _BODYISH.search(other["text"])
+                ):
+                    other["bbox"] = [
+                        min(ob[0], b[0]), min(ob[1], b[1]),
+                        max(ob[2], b[2]), max(ob[3], b[3]),
+                    ]
+                    other["masked_anchor"] = True
+                    b = None
+                    break
+        if b is not None:
+            out.append(ln)
+    return out
 
 
 def _column_order(lines: list[dict]) -> list[list[dict]]:
@@ -246,6 +288,20 @@ def _ambiguous_anchor(ln: dict, nxt: Optional[dict], left_edge: float) -> bool:
     b = ln["bbox"]
     if b is None or b[0] > left_edge + 40:
         return False
+    if ln.get("masked_anchor"):
+        # Body line that absorbed a masked-number box — only bodyish
+        # lines are flagged, so edge position alone decides.
+        return True
+    if not text:
+        # Detector boxed a mark (grading circle fused to the printed
+        # number) but recognized nothing — a masked-number anchor. Must
+        # be number-sized and sit on the same row as body-like text.
+        if b[2] - b[0] > 80 or b[3] - b[1] > 50:
+            return False
+        nb = nxt["bbox"] if nxt else None
+        if nb is None or not _BODYISH.search(nxt["text"]):
+            return False
+        return abs(nb[1] - b[1]) < max(b[3] - b[1], 30)
     if _QNUM.match(text):  # backward/duplicate number, e.g. 16 read as 6
         return True
     if _QBARE.match(text):
