@@ -128,8 +128,19 @@ export default function ReviewPage() {
     setResolving((r) => ({ ...r, [atuId]: true }));
     try {
       await resolveItem(id, atuId, value);
+      // Keyboard flow: move focus to the next pending item's input so a
+      // reviewer can walk the queue without reaching for the mouse.
+      const idx = items.findIndex((i) => i.atu_id === atuId);
+      const next = items.slice(idx + 1).find((i) => i.atu_id !== atuId);
       setItems((prev) => prev.filter((i) => i.atu_id !== atuId));
       setResolvedCount((n) => n + 1);
+      if (next) {
+        requestAnimationFrame(() =>
+          document
+            .querySelector<HTMLElement>(`[data-atu-input="${next.atu_id}"]`)
+            ?.focus(),
+        );
+      }
     } finally {
       setResolving((r) => ({ ...r, [atuId]: false }));
     }
@@ -514,6 +525,7 @@ export default function ReviewPage() {
 
                   <div className="flex gap-2">
                     <input
+                      data-atu-input={item.atu_id}
                       className="flex-1 rounded border px-3 py-1.5 text-sm"
                       placeholder="확정 값 입력"
                       value={values[item.atu_id] ?? ""}
