@@ -84,24 +84,34 @@ chat-completions 어댑터(`solve`/`solve_batch`/`complete`)로 이미 구현돼
 
 ### Mac Studio 측 (한 번만)
 
+맥에 이미 로컬 LLM 서버가 있다면 그걸 쓴다. **실제 설치 모델(확인됨)**:
+
+| alias | 모델 | 용도 |
+|---|---|---|
+| `local-small` | Qwen3 4B (Q4_K_M) | 너무 약함 — solver 비추천 |
+| `local-large` | Qwen3.5 27.8B (NVFP4) | **solver 기본** |
+| `local-long` | Qwen3.5 27.8B, 긴컨텍스트 | 대배치/긴 프롬프트용 예비 |
+
+없을 때 설치하는 경우:
+
 ```bash
 # Ollama — 외부 바인딩 필수 (기본은 localhost만 들음)
 OLLAMA_HOST=0.0.0.0 ollama serve
-ollama pull qwen3:32b        # 96GB+ 통합메모리면 gpt-oss:120b도 가능
+ollama pull qwen3:32b
 # LM Studio라면: 개발자 탭 → Start Server → "Serve on local network" 체크
 ```
 
-`ifconfig | grep "inet "`로 맥 IP 확인 (예: `192.168.0.10`). 라우터 고정IP 예약 권장.
-방화벽은 LAN 대역만 허용 — **11434 포트를 공인망에 열지 말 것**.
+`ifconfig | grep "inet "`로 맥 IP 확인. 서버 포트 확인: Ollama 11434 /
+LM Studio 1234 / llama.cpp 8080. **포트를 공인망에 열지 말 것**.
 
 ### Windows 측 `backend/.env`
 
 ```dotenv
 EXAMDNA_ENABLE_LOCAL_LLM=1
-LOCAL_LLM_BASE_URL=http://192.168.0.10:11434/v1   # 맥 실제 IP
-LOCAL_LLM_MODEL=qwen3:32b                          # ollama list에 있는 이름 그대로
-# LOCAL_LLM_TIMEOUT=600                            # 32B 모델 배치는 느릴 수 있음
-# LOCAL_LLM_DISABLE_THINKING=1                     # qwen3/qwq의 <think> 생략(빨라짐)
+LOCAL_LLM_BASE_URL=http://<맥-IP>:<포트>/v1
+LOCAL_LLM_MODEL=local-large       # 27.8B — solver용
+# LOCAL_LLM_TIMEOUT=600
+# LOCAL_LLM_DISABLE_THINKING=1    # <think> 생략(지원 서버만)
 ```
 
 ### 연결 확인
