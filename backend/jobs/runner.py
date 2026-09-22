@@ -48,7 +48,27 @@ def default_providers() -> Providers:
             providers.solver.insert(
                 0, _gemini_provider("GEMINI_MODEL_SOLVER") or gemini
             )
+    if os.environ.get("EXAMDNA_ENABLE_LOCAL_LLM") == "1":
+        local = _local_provider()
+        if local is not None:
+            # Text-only roles only — image roles (ocr/vision/math_ocr)
+            # need a real vision model and stay with their providers.
+            providers.solver.insert(0, local)
+            providers.reasoning.insert(0, local)
     return providers
+
+
+def _local_provider():
+    if not os.environ.get("LOCAL_LLM_BASE_URL"):
+        return None
+    try:
+        from providers.local import LocalLLMProvider
+
+        return LocalLLMProvider(
+            model=os.environ.get("LOCAL_LLM_MODEL") or None
+        )
+    except (ImportError, KeyError):
+        return None
 
 
 def _openai_provider(model_env: str = "OPENAI_MODEL"):
