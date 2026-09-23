@@ -21,6 +21,42 @@ class VerificationStatus(str, Enum):
     UNREADABLE = "UNREADABLE"
 
 
+class QuestionStatus(str, Enum):
+    """Per-question restoration lifecycle (question-centric engine).
+
+    AUTO_RESTORED   — restored from verified ATUs, nothing uncertain
+    AUTO_CORRECTED  — restored after deterministic constraint fixes
+    NEEDS_USER_REVIEW — fields that could change meaning are unresolved
+    USER_EDITED     — a human changed structured fields via an op
+    USER_CONFIRMED  — a human confirmed the restored question as correct
+    BLOCKED         — recognition produced nothing usable; manual entry
+                      or a better scan is required
+    """
+
+    AUTO_RESTORED = "AUTO_RESTORED"
+    AUTO_CORRECTED = "AUTO_CORRECTED"
+    NEEDS_USER_REVIEW = "NEEDS_USER_REVIEW"
+    USER_EDITED = "USER_EDITED"
+    USER_CONFIRMED = "USER_CONFIRMED"
+    BLOCKED = "BLOCKED"
+
+
+class DocRestorationStatus(str, Enum):
+    """Document-level restoration status (independent of the
+    VERIFIED_FINAL gate — that still requires every proof to pass).
+
+    RESTORED_BEST_EFFORT   — pipeline ran; results downloadable, review
+                             count is shown, never marked final
+    NEEDS_USER_REVIEW      — same, but at least one question still needs
+                             a human decision (download still allowed)
+    READY_FOR_FINAL_EXPORT — every question resolved (AUTO_* or USER_*)
+    """
+
+    RESTORED_BEST_EFFORT = "RESTORED_BEST_EFFORT"
+    NEEDS_USER_REVIEW = "NEEDS_USER_REVIEW"
+    READY_FOR_FINAL_EXPORT = "READY_FOR_FINAL_EXPORT"
+
+
 class QuestionType(str, Enum):
     MULTIPLE_CHOICE = "multiple_choice"
     SUBJECTIVE = "subjective"
@@ -152,9 +188,40 @@ class LogicFlag(BaseModel):
     detail: str = ""
 
 
+class FieldIssue(BaseModel):
+    """A field-level reason a question needs human review — surfaced in
+    the review UI so the user sees *what* is uncertain, not just that."""
+
+    field: str                    # body | choice:① | number | figure ...
+    reason: str                   # conflict | unverified | occluded | ...
+    detail: str = ""
+
+
+class AutoCorrection(BaseModel):
+    """One deterministic constraint fix applied to a question — recorded
+    so AUTO_CORRECTED content keeps an inspectable trail."""
+
+    rule: str                     # e.g. choice_label_dedup, unit_normalize
+    field: str
+    before: Any = None
+    after: Any = None
+
+
 class QuestionVerification(BaseModel):
     status: VerificationStatus = VerificationStatus.UNVERIFIED
     logic_flags: list[LogicFlag] = Field(default_factory=list)
+
+
+class QuestionRestoration(BaseModel):
+    """Question-centric restoration state (separate from verification —
+    verification judges truth, restoration tracks workflow)."""
+
+    status: QuestionStatus = QuestionStatus.AUTO_RESTORED
+    issues: list[FieldIssue] = Field(default_factory=list)
+    corrections: list[AutoCorrection] = Field(default_factory=list)
+    # Raw-material confidence: fraction of ATUs that reached a verdict
+    # (AUTO_VERIFIED/HUMAN_VERIFIED) out of ATUs that have candidates.
+    confidence: float = 0.0
 
 
 class Question(BaseModel):
@@ -182,6 +249,9 @@ class Question(BaseModel):
     answer_space_lines: Optional[int] = None
     atus: list[ATU] = Field(default_factory=list)
     verification: QuestionVerification = Field(default_factory=QuestionVerification)
+    restoration: "QuestionRestoration" = Field(
+        default_factory=lambda: QuestionRestoration()
+    )
 
 
 class PageImage(BaseModel):
@@ -291,12 +361,20 @@ class ExamMetadata(BaseModel):
     semester: Optional[int] = None
     exam_type: str = ""
     subject: str = "mathematics"
+    # Render preference chosen via the agent/template flow — one of
+    # renderers.plan.OUTPUT_MODES; "" means the export request decides.
+    output_mode: str = ""
 
 
 class DocumentVerification(BaseModel):
     status: Literal["IN_PROGRESS", "NEEDS_REVIEW", "VERIFIED_FINAL", "FAILED"] = (
         "IN_PROGRESS"
     )
+    # Restoration workflow status — RESTORED_BEST_EFFORT /
+    # NEEDS_USER_REVIEW / READY_FOR_FINAL_EXPORT. Independent of `status`:
+    # a best-effort restore is downloadable but never VERIFIED_FINAL
+    # while any question still needs review.
+    restoration_status: str = "IN_PROGRESS"
     gate: Optional[dict[str, Any]] = None
 
 

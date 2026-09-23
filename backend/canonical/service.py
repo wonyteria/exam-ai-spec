@@ -704,6 +704,64 @@ class MutationService:
                 else:
                     if op.field in {"body", "choices", "source", "atus", "id"}:
                         raise ValidationError(f"field {op.field} is not directly settable")
+                    if op.field == "difficulty":
+                        # QuestionDNA is the difficulty home — SetField
+                        # writes into it so the feature vector stays the
+                        # single source of difficulty truth.
+                        dna = dict(q.question_dna or {})
+                        self._check_old_digest(
+                            dna.get("difficulty"), op.expected_old_digest
+                        )
+                        dna["difficulty"] = str(op.value)
+                        q.question_dna = dna
+                        summary.append(
+                            {"op": op.op, "question": op.target_id,
+                             "field": "difficulty"}
+                        )
+                        if op.propagate:
+                            summary.extend(self._propagate(doc, q, op))
+                        continue
+                    if op.field == "figure":
+                        if not q.figures:
+                            raise ValidationError(
+                                "question has no figure to edit"
+                            )
+                        self._check_old_digest(
+                            q.figures[0].topology.get("description"),
+                            op.expected_old_digest,
+                        )
+                        q.figures[0].topology["description"] = str(op.value)
+                        summary.append(
+                            {"op": op.op, "question": op.target_id,
+                             "field": "figure"}
+                        )
+                        if op.propagate:
+                            summary.extend(self._propagate(doc, q, op))
+                        continue
+                    if op.field == "figure_label":
+                        # 도형 라벨(길이·각도 등) 수정 — value is
+                        # {"name": <라벨 위치/이름>, "label": <표기>}
+                        if not q.figures:
+                            raise ValidationError(
+                                "question has no figure to edit"
+                            )
+                        v = op.value if isinstance(op.value, dict) else {}
+                        name, label = str(v.get("name") or ""), str(
+                            v.get("label") or "")
+                        if not name or not label:
+                            raise ValidationError(
+                                "figure_label requires {name, label}"
+                            )
+                        self._check_old_digest(
+                            q.figures[0].labels.get(name),
+                            op.expected_old_digest,
+                        )
+                        q.figures[0].labels[name] = label
+                        summary.append(
+                            {"op": op.op, "question": op.target_id,
+                             "field": "figure_label", "name": name}
+                        )
+                        continue
                     if not hasattr(q, op.field or ""):
                         raise ValidationError(f"unknown question field {op.field}")
                     self._check_old_digest(getattr(q, op.field), op.expected_old_digest)
@@ -832,6 +890,26 @@ class MutationService:
                 doc.questions.append(q)
                 doc.questions.sort(key=lambda x: x.number)
                 summary.append({"op": "AddQuestion", "question": q.id, "label": label})
+            elif op.op == "DuplicateQuestion":
+                q = self._find_question(doc, op.target_id)
+                from document.models import Question
+
+                clone = Question.model_validate(q.model_dump())
+                clone.id = Question(number=0).id  # fresh id
+                clone.number = max(x.number for x in doc.questions) + 1
+                clone.label = None
+                # A duplicate carries over the question but not the
+                # verification verdict — the copy starts unverified.
+                from document.models import QuestionVerification
+                clone.verification = QuestionVerification()
+                for atu in clone.atus:
+                    if atu.status != VerificationStatus.HUMAN_VERIFIED:
+                        atu.status = VerificationStatus.UNVERIFIED
+                doc.questions.append(clone)
+                summary.append(
+                    {"op": "DuplicateQuestion", "source": q.id,
+                     "question": clone.id, "number": clone.number}
+                )
             elif op.op == "RemoveQuestion":
                 q = self._find_question(doc, op.target_id)
                 doc.questions = [x for x in doc.questions if x.id != q.id]
@@ -890,9 +968,63 @@ class MutationService:
                 self._check_old_digest(getattr(doc, op.field), op.expected_old_digest)
                 setattr(doc, op.field, op.value)
                 summary.append({"op": "SetStyle", "field": op.field})
+            elif op.op == "SetQuestionStatus":
+                from document.models import QuestionStatus
+
+                q = self._find_question(doc, op.target_id)
+                try:
+                    st = QuestionStatus(str(op.value))
+                except ValueError:
+                    raise ValidationError(
+                        f"unknown question status {op.value}"
+                    )
+                if st not in (
+                    QuestionStatus.USER_CONFIRMED,
+                    QuestionStatus.USER_EDITED,
+                ):
+                    raise ValidationError(
+                        "status must be USER_CONFIRMED or USER_EDITED"
+                    )
+                q.restoration.status = st
+                summary.append(
+                    {"op": op.op, "question": op.target_id,
+                     "status": st.value}
+                )
             else:
                 raise ValidationError(f"unsupported op {op.op}")
+        self._refresh_restoration(doc, ops)
         return summary
+
+    def _refresh_restoration(self, doc: Document, ops: list[ChangeOp]) -> None:
+        """After a batch of ops, mark every question the user touched
+        USER_EDITED and recompute restoration status. A question is
+        resolved by op target — either a question id/label or an ATU id —
+        so a review resolution also transitions its question."""
+        from document.models import QuestionStatus
+        from document.restoration import (
+            refresh_document_status,
+            refresh_question_status,
+        )
+
+        touched: dict[str, object] = {}
+        for op in ops:
+            if op.op == "SetQuestionStatus" or not op.target_id:
+                continue
+            q = None
+            try:
+                q = self._find_question(doc, op.target_id)
+            except Exception:
+                try:
+                    q, _ = self._find_atu(doc, op.target_id)
+                except Exception:
+                    q = None
+            if q is not None:
+                touched[q.id] = q
+        for q in touched.values():
+            if q.restoration.status != QuestionStatus.USER_CONFIRMED:
+                q.restoration.status = QuestionStatus.USER_EDITED
+            refresh_question_status(q)
+        refresh_document_status(doc)
 
     def _find_atu(self, doc: Document, atu_id: Optional[str]):
         for q in doc.questions:

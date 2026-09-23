@@ -21,6 +21,7 @@ import {
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import Chrome from "@/components/Chrome";
+import QuestionReview from "@/components/QuestionReview";
 
 interface LogicFlagGroup {
   question_number: number;
@@ -353,6 +354,8 @@ export default function ReviewPage() {
           {renumberMsg}
         </p>
       )}
+
+      <QuestionReview docId={id} />
 
       {pages.length > 0 && (
         <section className="glass mb-6 rounded-2xl p-5">

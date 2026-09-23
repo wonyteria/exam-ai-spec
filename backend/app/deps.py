@@ -14,6 +14,8 @@ _store: Store | None = None
 _tenancy: TenancyDB | None = None
 _objects: LocalObjectStore | None = None
 _canonical: CanonicalStore | None = None
+_profiles = None
+_agent_history = None
 
 
 def data_dir() -> Path:
@@ -50,11 +52,31 @@ def get_canonical() -> CanonicalStore:
     return _canonical
 
 
+def get_profiles():
+    """Academy profile store — presentation config, not exam content."""
+    global _profiles
+    if _profiles is None:
+        from academy.store import AcademyProfileStore
+
+        _profiles = AcademyProfileStore(data_dir() / "profiles")
+    return _profiles
+
+
+def get_agent_history():
+    """Per-document agent turn log (command -> proposal -> revision)."""
+    global _agent_history
+    if _agent_history is None:
+        from agent.history import AgentHistory
+
+        _agent_history = AgentHistory(data_dir() / "agent_history")
+    return _agent_history
+
+
 def reset() -> None:
     """Test hook: drop cached singletons (e.g. after EXAMDNA_DATA changes)."""
-    global _store, _tenancy, _objects, _canonical
+    global _store, _tenancy, _objects, _canonical, _profiles, _agent_history
     if _tenancy is not None:
         _tenancy.close()
     if _canonical is not None:
         _canonical.close()
-    _store = _tenancy = _objects = _canonical = None
+    _store = _tenancy = _objects = _canonical = _profiles = _agent_history = None

@@ -498,7 +498,19 @@ def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
 
 
 def _label(mask: np.ndarray) -> tuple[np.ndarray, dict[int, int]]:
-    """Two-pass 8-connectivity component labeling (no scipy dependency)."""
+    """8-connectivity component labeling — cv2 fast path with a
+    pure-Python fallback for minimal installs."""
+    try:
+        import cv2
+
+        n, labels = cv2.connectedComponents(
+            mask.astype(np.uint8), connectivity=8
+        )
+        hist = np.bincount(labels.ravel(), minlength=n)
+        counts = {int(i): int(hist[i]) for i in range(1, n)}
+        return labels.astype(np.int32), counts
+    except ImportError:
+        pass
     h, w = mask.shape
     labels = np.zeros((h, w), dtype=np.int32)
     parent = [0]

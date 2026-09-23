@@ -140,9 +140,17 @@ def test_response_format_json_object_requested(monkeypatch, tmp_path):
 def test_runner_registers_local_when_enabled(monkeypatch):
     import jobs.runner as runner
 
+    class _FakeLocal:
+        name = "local-llm"
+        model = "qwen3:32b"
+
+    # conftest blocks the real factory; re-patch with a stub to verify the
+    # env-gated registration wiring itself.
+    monkeypatch.setattr(runner, "_local_provider", lambda *a, **kw: _FakeLocal())
     monkeypatch.setenv("EXAMDNA_ENABLE_LOCAL_LLM", "1")
     monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen3:32b")
+    monkeypatch.delenv("LOCAL_LLM_MODEL_ALT", raising=False)
     providers = runner.default_providers()
     assert any(p.name == "local-llm" for p in providers.solver)
     assert providers.solver[0].name == "local-llm"

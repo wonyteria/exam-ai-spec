@@ -14,8 +14,21 @@ Supported commands (Korean-first):
   "20문제를 15문제로 줄여줘"     -> RemoveQuestion (trailing, previewed)
   "제목을 '...'로 바꿔줘"        -> SetMetadata(title)
   "학원 스타일 X 적용해줘"       -> SetStyle(brand_id)
+  "3번 배점을 5점으로"           -> SetPoints
+  "3번 정답을 ②로"              -> SetAnswer
+  "3번 본문을 '...'로"           -> SetBody
+  "3번 해설을 '...'"             -> SetSolution
+  "3번 2번 보기를 '...'로"       -> SetChoice
+  "3번 수식을 '...'"             -> SetEquation
+  "3번 문제 복제"               -> DuplicateQuestion
+  "3번을 서술형으로"            -> SetField(type)
+  "3번 난이도 상"               -> SetField(difficulty)
+  "교사용/학생용/답안지 모드로"   -> SetMetadata(output_mode)
+  "비슷한 문제 3개 만들어"       -> pending_action=generate_variants
+    (produces no ops — the client runs the variation engine after
+    approval; the turn is recorded either way)
 Unrecognized commands return a proposal with `recognized=False` —
-never a silent no-op.
+never a silent no-op. Ambiguous ones stay NEEDS_REVIEW the same way.
 """
 from __future__ import annotations
 
@@ -34,6 +47,10 @@ class AgentProposal:
     recognized: bool = True
     explanation: str = ""
     preview: list[str] = field(default_factory=list)  # human-readable diff
+    # Non-ChangeOp follow-ups (e.g. variant generation) — the proposal
+    # names the action and its params; the client executes it after
+    # approval through the matching endpoint, never implicitly.
+    pending_action: Optional[dict] = None
 
 
 def _order_labels(doc: Document) -> list[str]:
@@ -137,6 +154,185 @@ def parse_command(doc: Document, command: str) -> AgentProposal:
                      value=m.group(1), reason=cmd)
         ]
         p.explanation = f"스타일 → {m.group(1)}"
+        return _with_preview(doc, p)
+
+    m = re.search(r"(\d+)번?\s*배점(을|를)?\s*(\d+)\s*점?", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetPoints", target_id=target,
+                         value=int(m.group(3)), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 배점 → {m.group(3)}점"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*정답(을|를)?\s*['\"]?([^'\"\s]+?)['\"]?\s*(?:으로|로)?\s*$",
+        cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetAnswer", target_id=target,
+                         value=m.group(3), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 정답 → {m.group(3)}"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*(?:본문|지문|문제\s*내용)(을|를)?\s*['\"]([^'\"]+)['\"]",
+        cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetBody", target_id=target,
+                         value=m.group(3), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 본문 수정"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*(해설|풀이)(을|를)?\s*['\"]([^'\"]+)['\"]", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetSolution", target_id=target,
+                         value=m.group(4), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 해설 수정"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*([①-⑮\d]+)번?\s*(?:선택지|보기)(을|를)?\s*"
+        r"['\"]([^'\"]+)['\"]", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            label = m.group(2)
+            if label.isdigit():
+                q = next(q for q in doc.questions if q.id == target)
+                labels = [c.label for c in q.choices]
+                idx = int(label) - 1
+                label = (
+                    labels[idx] if 0 <= idx < len(labels) else label
+                )
+            p.ops = [
+                ChangeOp(op="SetChoice", target_id=target, field=label,
+                         value=m.group(4), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 {label} 보기 수정"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*수식(을|를)?\s*['\"]([^'\"]+)['\"]", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetEquation", target_id=target, field="0",
+                         value=m.group(3), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 수식 수정"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(r"(\d+)번?\s*(?:문제|문항)?\s*(을|를)?\s*(복제|복사)", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="DuplicateQuestion", target_id=target,
+                         reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 문항 복제"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(
+        r"(\d+)번?\s*(?:유형|타입)?(을|를)?\s*(객관식|서술형|주관식|단답형)"
+        r"(으?로)", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        type_map = {
+            "객관식": "multiple_choice", "주관식": "subjective",
+            "서술형": "descriptive", "단답형": "subjective",
+        }
+        if target:
+            p.ops = [
+                ChangeOp(op="SetField", target_id=target, field="type",
+                         value=type_map[m.group(3)], reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 유형 → {m.group(3)}"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    m = re.search(r"(\d+)번?\s*난이도(을|를)?\s*(상|중|하|[A-E])(으?로)?", cmd)
+    if m:
+        target = _resolve(doc, m.group(1))
+        if target:
+            p.ops = [
+                ChangeOp(op="SetField", target_id=target,
+                         field="difficulty", value=m.group(3), reason=cmd)
+            ]
+            p.explanation = f"{m.group(1)}번 난이도 → {m.group(3)}"
+        else:
+            p.recognized = False
+            p.explanation = "대상 문항을 찾을 수 없습니다"
+        return _with_preview(doc, p)
+
+    mode_map = {
+        "교사용": "TEACHER", "선생님용": "TEACHER",
+        "학생용": "STUDENT", "답안지": "ANSWER_KEY",
+        "정답지": "ANSWER_KEY",
+    }
+    for word, mode in mode_map.items():
+        if re.search(word + r"(\s*모드)?(으로|로|만들|출력)", cmd):
+            p.ops = [
+                ChangeOp(op="SetMetadata", field="output_mode",
+                         value=mode, reason=cmd)
+            ]
+            p.explanation = f"출력 모드 → {mode}"
+            return _with_preview(doc, p)
+
+    m = re.search(r"비슷한\s*문제\s*(\d+)\s*개", cmd)
+    if m:
+        # Variant generation is not a document mutation — propose the
+        # action; the client runs /compose or the variation engine after
+        # approval so generation stays explicit and auditable.
+        p.recognized = True
+        p.pending_action = {
+            "kind": "generate_variants",
+            "count": int(m.group(1)),
+            "endpoint": "compose",
+        }
+        p.explanation = (
+            f"유사 문항 {m.group(1)}개 생성 — 승인 후 compose/변형 "
+            "엔진으로 실행"
+        )
         return _with_preview(doc, p)
 
     p.recognized = False

@@ -200,3 +200,81 @@ def pdf_checks(pdf_path: Path, doc, proof: Optional[dict] = None) -> dict[str, s
         "PASSED" if text.count("정답:") >= _scored(doc) else "NOT_RUN"
     )
     return checks
+
+
+def docx_checks(
+    docx_path: Path, doc, pdf_path: Optional[Path] = None
+) -> dict[str, str]:
+    """What a DOCX's own bytes can prove via python-docx round-trip —
+    same honest pattern as pdf_checks: unverifiable stays NOT_RUN.
+
+    `pdf_path` must be a render of exactly these docx bytes (e.g. a
+    LibreOffice docx->pdf conversion). Only with that render can the
+    visual checks pass — a docx that was never rendered stays NOT_RUN
+    and cannot reach FINAL_ELIGIBLE."""
+    from qa.docx_proof import docx_content_mismatches, docx_text
+
+    checks = _blank("docx")
+    text = docx_text(docx_path)
+    if text is None:
+        checks["FORMAT_OPEN_VALIDITY"] = "FAILED"
+        return checks
+    checks["FORMAT_OPEN_VALIDITY"] = "PASSED"
+    checks["ARTIFACT_SEMANTIC_COVERAGE"] = (
+        "PASSED" if docx_content_mismatches(docx_path, doc) == 0
+        else "FAILED"
+    )
+    checks["ARTIFACT_HASH_BINDING"] = "PASSED"
+    # Endnote mode writes "※ 정답은 미주 N번 참조"; answer-solution mode
+    # writes "정답: X". Either marker satisfies the content policy.
+    answers = text.count("정답:") + text.count("정답은 미주")
+    checks["OUTPUT_MODE_CONTENT_POLICY"] = (
+        "PASSED" if answers >= _scored(doc) else "NOT_RUN"
+    )
+    if pdf_path is not None and pdf_path.exists():
+        # The rendered PDF is the visual proof for these exact docx
+        # bytes — same evidence the PDF format itself would carry.
+        if pdf_text(pdf_path) is not None:
+            checks["RENDERED_TEXT_VISUAL_MATCH"] = (
+                "PASSED" if _pdf_text_mismatches(pdf_path, doc) == 0
+                else "FAILED"
+            )
+        layout = pdf_layout_ok(pdf_path)
+        if layout is not None:
+            checks["LAYOUT_STYLE_BOUNDS"] = (
+                "PASSED" if layout else "FAILED"
+            )
+    return checks
+
+
+def render_docx_pdf(docx_path: Path, pdf_path: Path) -> Optional[Path]:
+    """Render a DOCX to PDF via LibreOffice when available.
+
+    Returns the rendered path or None — a missing renderer means the
+    visual checks stay NOT_RUN, never faked."""
+    import shutil
+    import subprocess
+
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        mac = Path(
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        )
+        if mac.exists():
+            soffice = str(mac)
+    if not soffice:
+        return None
+    try:
+        subprocess.run(
+            [
+                soffice, "--headless", "--convert-to", "pdf",
+                "--outdir", str(pdf_path.parent), str(docx_path),
+            ],
+            check=True, capture_output=True, timeout=120,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    produced = pdf_path.parent / (docx_path.stem + ".pdf")
+    if produced != pdf_path and produced.exists():
+        produced.rename(pdf_path)
+    return pdf_path if pdf_path.exists() else None

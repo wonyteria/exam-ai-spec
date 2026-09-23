@@ -25,21 +25,35 @@ def run(ctx: PipelineContext) -> None:
             for cand in provider.recognize_math(image, region):
                 _ingest(question, provider.name, cand)
 
-    # Targeted fallback: only questions still missing fields get per-region calls
+    # Targeted fallback: only questions still missing fields get per-region
+    # calls. Every OCR provider still runs (consensus needs independent
+    # sources) — same-space variants are retried per provider only while
+    # that provider has contributed nothing (RESTORE-15 routing).
     for question in ctx.document.questions:
         if _extraction_adequate(question, -1):
             continue
-        image, region = _question_image(ctx, question)
-        if image is None:
-            continue
+        images = [
+            (img, region, variant)
+            for img, region, variant in _question_images(ctx, question)
+            if img is not None and region is not None
+        ]
         for provider in ctx.providers.ocr:
-            for attempt in range(3):
-                before = len(question.atus)
-                for cand in provider.recognize_text(image, region):
-                    _ingest(question, provider.name, cand)
-                if _extraction_adequate(question, before):
-                    break
-
+            contributed = False
+            for image, region, variant in images:
+                for attempt in range(3):
+                    before = len(question.atus)
+                    for cand in provider.recognize_text(image, region):
+                        if variant:
+                            cand.meta = {
+                                **(cand.meta or {}), "variant": variant
+                            }
+                        _ingest(question, provider.name, cand)
+                        contributed = True
+                    if _extraction_adequate(question, before):
+                        break
+                if contributed:
+                    break  # provider spoke — next variant is for the
+                    # providers that still have nothing to say
     atu_count = sum(len(q.atus) for q in ctx.document.questions)
     ctx.emit("recognition", f"{atu_count}개 ATU 후보 수집")
 
@@ -117,8 +131,10 @@ def _native_pdf_items(page) -> list[dict]:
 
 
 def _label_matches(item_label, question: Question) -> bool:
-    item = str(item_label or "")
-    return item == (question.label or str(question.number))
+    from .segmenter import normalize_label
+
+    item = normalize_label(str(item_label or ""))
+    return item == normalize_label(question.label or str(question.number))
 
 
 def _ingest_fields(question: Question, provider_name: str, item: dict) -> None:
@@ -151,6 +167,31 @@ def _question_image(ctx: PipelineContext, question: Question):
         return None, None
     page = ctx.document.pages[question.source.page]
     return ctx.resolve_uri(page.clean_uri or page.original.uri), question.source.bbox
+
+
+# Variants that share the working pixel space — a bbox on the clean image
+# is valid on these without any remapping.
+_SAME_SPACE_VARIANTS = ("shadow_free", "high_contrast")
+# "deskewed" is deliberately NOT routed: it lives in a rotated coordinate
+# space while question.source.bbox and review anchors are in original
+# space. The deskew angle stays in page.transform_chain so a future stage
+# can invert it explicitly (see core/examdna/spatial.py).
+
+
+def _question_images(ctx: PipelineContext, question: Question):
+    """Crop sources for one question, clean image first. Same-space
+    variants follow so an inadequate reading is retried on a cleaned
+    input; each candidate is tagged with the variant it came from."""
+    if not question.source or question.source.page >= len(ctx.document.pages):
+        return
+    page = ctx.document.pages[question.source.page]
+    yield ctx.resolve_uri(
+        page.clean_uri or page.original.uri
+    ), question.source.bbox, None
+    for name in _SAME_SPACE_VARIANTS:
+        uri = (page.original.variants or {}).get(name)
+        if uri:
+            yield ctx.resolve_uri(uri), question.source.bbox, name
 
 
 def _ingest(question: Question, provider_name: str, cand: Candidate) -> None:

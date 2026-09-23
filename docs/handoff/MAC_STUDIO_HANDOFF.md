@@ -141,3 +141,95 @@ curl http://192.168.0.10:11434/v1/models        # 모델 목록이 오면 연결
   구버전 Ollama는 무시하고 프리폼 텍스트 반환 → `_parse_json` 복구가 흡수,
   그래도 실패 시 3회 재시도 후 빈 결과(=검증 불가, FAILED로 정직 처리).
 - 비전 모델이 아니면 OCR/vision 역할에 넣지 않음 — 현재 등록은 solver·reasoning뿐.
+
+## 9. 문항 중심 복원 레이어 (신규)
+
+### 상태 모델
+- 문항 상태(`document/models.py`): `AUTO_RESTORED`, `AUTO_CORRECTED`,
+  `NEEDS_USER_REVIEW`, `USER_EDITED`, `USER_CONFIRMED`, `BLOCKED`.
+- 문서 상태: `RESTORED_BEST_EFFORT` / `NEEDS_USER_REVIEW` /
+  `READY_FOR_FINAL_EXPORT` — 근거(ATU, 교정 플래그, logic flag, 사용자 편집,
+  차단된 스테이지)로부터 파생. 스테이지가 "돌았다"로 판단하지 않음.
+- 파생 로직: `document/restoration.py`. ATU 해소 시 연결된 이슈도 함께 제거됨.
+
+### 교정 스테이지
+- `core/examdna/correction.py` + `correction_stage.py`, 파이프라인에서
+  `source_verification` 직후 실행.
+- 자동 교정: 선택지 라벨 중복, 음수 기호 누락, OCR 오탈자, 줄 결합,
+  단위/기호 정규화(㎝·㎜·˚·⊿·< 등), 선택지 순서, 하위 번호.
+- 자동 확정 금지: 의미 변경 숫자, 도형 치수, 필기 겹침(uncertain_regions 중
+  reconstruction이 REVIEW_REQUIRED로 남긴 것만), 완전 가림, 다해석 수식
+  → `NEEDS_USER_REVIEW`.
+
+### 문항 API (`app/api/documents.py`)
+- `GET /documents/{id}/restoration/summary` — 상태 카운트 + 문제 문항만.
+- `GET /documents/{id}/questions/{qid}` — crop 경로 + 구조화 필드 + 이슈.
+- `POST .../questions/{qid}/edit` — 자연어 명령 → canonical op 미리보기
+  (store 미변경), `POST .../edit/confirm` — revision 생성 + `USER_EDITED`.
+- 타깃 해소: 정확한 ID > 유일 번호/라벨 매치 > 모호하면 409. 복수 문항에
+  조용히 적용하지 않음.
+
+### 자연어 파서 (`agent/question_ops.py`)
+- `①번 보기를 -35로 수정해`, `배점을 5점으로`, `정답을 3번으로`,
+  수식/본문/도형라벨 → `SetChoice`/`SetPoints`/`SetAnswer`/`SetEquation`/
+  `SetBody`/`SetField`.
+- canonical op 신규: `SetQuestionStatus` (`canonical/models.py`,
+  `canonical/service.py` — `figure_label` SetField 처리 포함).
+
+### 로컬 모델 라우팅 (`providers/local/router.py`)
+- 기본 `local-large`; 긴/서술형 문항은 `local-long`.
+- `local-small`은 solver로 만들지 않음. 동일 모델 응답은 독립 근거 2회 계산 금지.
+- bounded concurrency(semaphore) + `.model` 프로퍼티로 기존 테스트 호환.
+- `jobs/runner.py`의 `default_providers`에서 ALT 슬롯은 독립 근거로 유지.
+
+### 다운로드 정책
+- final export는 기존 `_require_verified_final` fail-closed 유지.
+- best-effort draft 다운로드(JSON/HWPX/DOCX/PDF)는 검토 필요 문항이
+  남아 있어도 허용 — 응답에 review 카운트 노출, `VERIFIED_FINAL` 표기 금지.
+
+### 프론트
+- `app/documents/[id]/review/page.tsx` + `components/QuestionReview.tsx`:
+  상태 카운트, 문제 문항만 기본 표시, 문항 상세(crop+필드+이슈),
+  자연어 수정창, 전/후 미리보기, 명시적 적용.
+- `components/Modal.tsx`: 긴 내용 스크롤 처리. export 페이지에
+  best-effort 다운로드 섹션 + 검토 카운트.
+- `playwright.config.ts`: `E2E_BASE_URL`/`PORT` 환경변수로 포트 변경 가능
+  (로컬 3000 충돌 시).
+- 주의: Chromium이 same-origin `download` 클릭에서 `page.route` 모킹을
+  우회함 → 다운로드 E2E는 href/contract를 검증해야 함(wp09 스펙 참조).
+
+### 벤치마크
+- `backend/eval/bench/simwon_bench.py` — `samples/심원중 샘플/` 5장,
+  31문항 recall·필드 정확도·상태 카운트·시간 측정.
+  기준 HWP는 런타임 입력이 아니라 평가용.
+
+### 관측자(Observer) 다양성 — Tesseract
+- `providers/ocr/tesseract.py` + `providers/vision/tesseract_page.py`:
+  시스템 `tesseract` 바이너리(TSV 모드, 패키지 불필요, `kor` traineddata 필요).
+  LSTM 계열이라 VLM/Paddle과 다른 엔진 → consensus에서 진짜 독립 소스로 인정.
+- `EXAMDNA_TESSERACT=1`로 opt-in (vision get_page_extractors + ocr get_providers).
+- 라벨 정규화 `segmenter.normalize_label`: `논술2`/`논술형 2` 등 별칭 통일,
+  엔진 간 같은 영역이 라벨만 달라 중복 문항이 되는 것 방지.
+
+### 심원중 벤치 결과 (eval/bench/out/simwon_final, 2026 측정)
+- 31/31 실제 문항 분리 + `?mark1` 모호 앵커 1개(검토용, 정상) → recall 1.0
+- ATU 합의: AUTO_VERIFIED 10 / CONFLICT 8 / UNVERIFIED 268
+  (local VLM + tesseract 2-엔진 일치 필드만 자동 확정)
+- field_accuracy (gold: `samples/심원중 샘플/expected.json` —
+  `eval/bench/extract_simwon_gold.py`가 HWP 바이너리의 EQEDIT 레코드에서
+  수식 스크립트까지 복구한 31문항 전체 gold):
+  - points 1.0, choice_exact 0.979, figure_label_recall 0.80,
+    critical_token_recall 0.77, body_exact 0.45 (CONFLICT 본문은
+    fail-closed로 비워 둠 → 정직한 저점수)
+  - answer 0.0 — solver는 검증된 문항만 푸는데 전부 미검증이라 skip(정상)
+- 상태: 전 문항 NEEDS_USER_REVIEW. 잘못 자동 확정 0. 문서 NEEDS_USER_REVIEW.
+- 교정 발동: bogee_consonant ×6 (ㄱ/ㄴ/ㄷ→가/나/다 오독 교정 —
+  gold 비교로 발견, `<보기>`/자음 마커 증거 있을 때만), ocr_typo ×3
+- 시간: warm cache ~68s / cold ~1245s (VLM page extraction·trace가 지배)
+- 문항별 비교 리포트: `eval/bench/out/simwon_final/comparison_report.md`
+- VLM page prompt v2: figure 라벨·equations를 후보로 추출
+  (figure_label_recall 0→0.80)
+- Q12는 원본에 [N점] 태그 없음, 3-3은 배점 없음.
+- 잔여: 손상된 한국어 사진에서 tesseract 정확도가 낮아 본문 필드는
+  대부분 CONFLICT/UNVERIFIED — PaddleOCR/EasyOCR 같은 세 번째 독립
+  엔진 추가 시 자동 확정 비율 상승 예상.

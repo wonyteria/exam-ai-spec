@@ -36,3 +36,17 @@ class MathSolverProvider(Protocol):
     name: str
 
     def solve(self, problem: dict[str, Any]) -> Candidate: ...
+
+
+class TraceDetectorProvider(Protocol):
+    """Student-trace region detector (LayerDNA candidate source).
+
+    Returns one Candidate whose value is
+    `{"traces": [{"x","y","w","h","kind"}]}` on a normalized 0-1000 grid —
+    a region-level claim, never a pixel mask. ExamDNA applies its own
+    pixel policy inside each box.
+    """
+
+    name: str
+
+    def detect_traces(self, image: Path) -> Candidate: ...

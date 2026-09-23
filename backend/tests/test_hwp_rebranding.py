@@ -539,6 +539,7 @@ def _fake_inventory(monkeypatch, running: set[int]):
     import rebranding.hwp_worker_operation as mod
 
     state = {"running": set(running)}
+    monkeypatch.setattr(mod, "_on_windows", lambda: True)
     monkeypatch.setattr(mod, "hwp_process_inventory", lambda: set(state["running"]))
     killed: list[int] = []
 

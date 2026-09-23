@@ -116,6 +116,28 @@ class TestMetrics:
         )
         assert 0.4 < m2["print_destruction_rate"] < 0.7
 
+    def test_question_metrics_skips_absent_gold_fields(self):
+        # Partial gold (no body/choices/answer) must not read as a zero.
+        m = metrics.question_metrics(
+            {"body": "garbage", "choices": {}, "points": 3},
+            {"number": "1", "points": 3},
+        )
+        assert m["body_exact"] is None
+        assert m["choice_exact"] is None
+        assert m["answer_match"] is None
+        assert m["points_match"] is True
+        assert m["figure_label_recall"] is None
+
+    def test_question_metrics_figure_label_recall(self):
+        m = metrics.question_metrics(
+            {"figure_text": "삼각형 △ABC ∠A=40° AB=12cm"},
+            {"number": "1", "figure_labels": ["△ABC", "∠A", "40°", "∠C"]},
+        )
+        assert m["figure_label_recall"] == 0.75
+        # no gold figure labels -> field skipped
+        m2 = metrics.question_metrics({}, {"number": "1"})
+        assert m2["figure_label_recall"] is None
+
 
 class TestSynth:
     def test_generates_paired_masks(self):

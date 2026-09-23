@@ -56,7 +56,7 @@ export default function Modal({
     >
       <div
         ref={boxRef}
-        className="glass-pop w-full max-w-3xl rounded-2xl p-5"
+        className="glass-pop max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl p-5"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

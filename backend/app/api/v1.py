@@ -345,6 +345,9 @@ def v1_get_revision(
 
 class ChangesRequest(BaseModel):
     ops: list[ChangeOp]
+    # When the ops came from an agent proposal, the turn id binds this
+    # revision back to the chat command that produced it (per-turn audit).
+    agent_turn_id: Optional[str] = None
 
 
 @router.post("/tenants/{tenant_id}/documents/{doc_id}/changes")
@@ -370,6 +373,10 @@ def v1_changes(
         )
 
     rev = _handle(go)
+    if req.agent_turn_id:
+        from ..deps import get_agent_history
+
+        get_agent_history().link_revision(doc_id, req.agent_turn_id, rev.id)
     return {"data": {"revision": _revision_out(rev)}, "request_id": _request_id()}
 
 
@@ -391,12 +398,19 @@ def v1_agent_propose(
     If-Match, which creates a revision (undo/redo stays available)."""
     from agent.ops import parse_command
 
-    _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
+    ctx, _ = _doc_ctx(tenant_id, doc_id, "edit", request, cstore)
     head = cstore.get_head_revision(doc_id)
     if head is None:
         _err(409, "NO_REVISION", "document has no revision")
     doc = Document.model_validate(head.content_json)
     proposal = parse_command(doc, req.command)
+    from ..deps import get_agent_history
+
+    # The turn is recorded even when the command is unrecognized —
+    # ambiguous commands stay auditable NEEDS_REVIEW entries.
+    turn = get_agent_history().record_turn(
+        doc_id, ctx.user_id, req.command, proposal, head.id
+    )
     return {
         "data": {
             "command": proposal.command,
@@ -404,8 +418,30 @@ def v1_agent_propose(
             "explanation": proposal.explanation,
             "preview": proposal.preview,
             "ops": [op.model_dump() for op in proposal.ops],
+            "pending_action": proposal.pending_action,
             "if_match": head.id,
+            # Client submits the ops to /changes with this id to bind the
+            # resulting revision to this turn.
+            "turn_id": turn["id"],
         },
+        "request_id": _request_id(),
+    }
+
+
+@router.get("/tenants/{tenant_id}/documents/{doc_id}/agent/history")
+def v1_agent_history(
+    tenant_id: str,
+    doc_id: str,
+    request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Conversation history: every command turn with its proposal and
+    the revision it produced (when applied)."""
+    from ..deps import get_agent_history
+
+    _doc_ctx(tenant_id, doc_id, "read", request, cstore)
+    return {
+        "data": {"turns": get_agent_history().list_turns(doc_id)},
         "request_id": _request_id(),
     }
 
@@ -758,6 +794,39 @@ def v1_create_artifact(
             checks=hwpx_checks(hwpx_path, doc),
             worker_identity="v1.create_artifact",
         )
+    elif fmt == "docx":
+        from jobs.artifact_bridge import (
+            docx_checks, render_docx_pdf,
+        )
+        from renderers.docx.renderer import render_docx
+
+        blob = render_docx(doc, output_mode=req.output_mode)
+        sha = hashlib.sha256(blob).hexdigest()
+        key = f"artifacts/{tenant_id}/{doc_id}/{rev.id}/{fmt}-{sha[:16]}.{fmt}"
+        uri = objects.put(key, blob)
+        art = _service(cstore).register_draft_artifact(
+            tenant_id, doc_id, rev.id, fmt, uri, sha, len(blob), req.output_mode
+        )
+        # Same contract as hwpx: proof computed server-side over the
+        # stored bytes, never from client claims. The visual checks need
+        # an actual docx->pdf render of these exact bytes; no renderer
+        # means they stay NOT_RUN and the format stays non-final.
+        docx_path = objects.open(uri)
+        rendered = render_docx_pdf(docx_path, docx_path.with_suffix(".pdf"))
+        checks = docx_checks(
+            docx_path, doc,
+            pdf_path=rendered if rendered and rendered.exists() else None,
+        )
+        proof = {
+            "renderer": "libreoffice" if rendered else None,
+            "rendered_pdf_sha256": (
+                hashlib.sha256(rendered.read_bytes()).hexdigest()
+                if rendered else None
+            ),
+        }
+        _service(cstore).record_proof(
+            art.id, checks=checks, worker_identity="v1.create_artifact",
+        )
     elif fmt in {"hwp", "pdf"}:
         hwpx_blob = render_hwpx(doc, output_mode=req.output_mode)
         hwpx_sha = hashlib.sha256(hwpx_blob).hexdigest()
@@ -1053,3 +1122,148 @@ async def v1_job_events(
             await asyncio.sleep(0.4)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# --- academy profiles -----------------------------------------------------------
+
+
+class ProfileRequest(BaseModel):
+    academy_name: str
+    logo_uri: Optional[str] = None
+    address: str = ""
+    phone: str = ""
+    subjects: list[str] = []
+    grades: list[str] = []
+    brand_id: Optional[str] = None
+    fonts: dict[str, str] = {}
+    colors: dict[str, str] = {}
+    margins_pt: Optional[list[float]] = None
+    header_text: Optional[str] = None
+    footer_text: Optional[str] = None
+    footer_page_number: bool = True
+    columns: int = 2
+    line_spacing: float = 1.0
+    output_mode: str = "STUDENT_WITH_ENDNOTES"
+
+
+def _profile_from(req: ProfileRequest, academy_id: str):
+    from academy.profile import AcademyProfile
+
+    return AcademyProfile(academy_id=academy_id, **req.model_dump())
+
+
+@router.get("/tenants/{tenant_id}/profiles")
+def v1_list_profiles(tenant_id: str, request: Request):
+    from ..deps import get_profiles
+
+    _tenant_ctx(tenant_id, request, "read")
+    return {
+        "data": {
+            "profiles": [
+                p.model_dump() for p in get_profiles().list(tenant_id)
+            ]
+        },
+        "request_id": _request_id(),
+    }
+
+
+@router.post("/tenants/{tenant_id}/profiles")
+def v1_create_profile(
+    tenant_id: str, req: ProfileRequest, request: Request
+):
+    from ..deps import get_profiles
+
+    _tenant_ctx(tenant_id, request, "edit")
+    import uuid as _uuid
+
+    profile = _profile_from(req, academy_id=_uuid.uuid4().hex[:12])
+    get_profiles().upsert(tenant_id, profile)
+    return {"data": {"profile": profile.model_dump()},
+            "request_id": _request_id()}
+
+
+@router.get("/tenants/{tenant_id}/profiles/{academy_id}")
+def v1_get_profile(tenant_id: str, academy_id: str, request: Request):
+    from ..deps import get_profiles
+
+    _tenant_ctx(tenant_id, request, "read")
+    p = get_profiles().get(tenant_id, academy_id)
+    if p is None:
+        _err(404, "NOT_FOUND", "profile not found")
+    return {"data": {"profile": p.model_dump()},
+            "request_id": _request_id()}
+
+
+@router.put("/tenants/{tenant_id}/profiles/{academy_id}")
+def v1_update_profile(
+    tenant_id: str, academy_id: str, req: ProfileRequest,
+    request: Request,
+):
+    from ..deps import get_profiles
+
+    _tenant_ctx(tenant_id, request, "edit")
+    store = get_profiles()
+    if store.get(tenant_id, academy_id) is None:
+        _err(404, "NOT_FOUND", "profile not found")
+    profile = _profile_from(req, academy_id)
+    store.upsert(tenant_id, profile)
+    return {"data": {"profile": profile.model_dump()},
+            "request_id": _request_id()}
+
+
+@router.delete("/tenants/{tenant_id}/profiles/{academy_id}")
+def v1_delete_profile(tenant_id: str, academy_id: str, request: Request):
+    from ..deps import get_profiles
+
+    _tenant_ctx(tenant_id, request, "edit")
+    if not get_profiles().delete(tenant_id, academy_id):
+        _err(404, "NOT_FOUND", "profile not found")
+    return {"data": {"deleted": academy_id},
+            "request_id": _request_id()}
+
+
+@router.post("/tenants/{tenant_id}/profiles/{academy_id}/preview")
+async def v1_preview_profile(
+    tenant_id: str, academy_id: str, request: Request,
+    cstore: CanonicalStore = Depends(get_canonical),
+):
+    """Resolve the profile into the render-time style bundle.
+
+    When `doc_id` is supplied in the body the bundle also carries the
+    StyleDNA extracted from that document — content and style stay
+    separate; nothing is mutated or rendered to a final artifact.
+    """
+    from ..deps import get_profiles
+    from academy.profile import apply_style, extract_style
+    from renderers.brand import get_brand
+
+    _tenant_ctx(tenant_id, request, "read")
+    profile = get_profiles().get(tenant_id, academy_id)
+    if profile is None:
+        _err(404, "NOT_FOUND", "profile not found")
+
+    # Optional body {"doc_id": ...} folds in the document's measured
+    # StyleDNA; without it the bundle shows profile defaults only.
+    try:
+        payload = await request.json()  # type: ignore[misc]
+    except Exception:
+        payload = {}
+    style = None
+    doc_id = (payload or {}).get("doc_id")
+    if doc_id:
+        head = cstore.get_head_revision(doc_id)
+        rec = cstore.get_document(doc_id)
+        if head is not None and rec is not None and rec.tenant_id == tenant_id:
+            style = extract_style(
+                Document.model_validate(head.content_json)
+            )
+    return {
+        "data": {
+            "profile": profile.model_dump(),
+            "resolved_brand": vars(get_brand(profile.brand_id)),
+            "style_bundle": apply_style(
+                Document(), profile=profile, style=style
+            ),
+        },
+        "request_id": _request_id(),
+    }

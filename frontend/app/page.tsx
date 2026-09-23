@@ -161,7 +161,7 @@ export default function UploadPage() {
         <input
           type="file"
           multiple
-          accept=".jpg,.jpeg,.png,.pdf,.bmp,.webp"
+          accept=".jpg,.jpeg,.png,.pdf,.bmp,.webp,.heic,.heif"
           className="hidden"
           onChange={(e) => {
             const picked = e.target.files ? Array.from(e.target.files) : null;

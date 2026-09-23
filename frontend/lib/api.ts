@@ -818,3 +818,142 @@ export async function setPageRole(
   if (!res.ok) await throwApiError(res);
   return res.json();
 }
+
+// --- question-centric restoration -------------------------------------------
+
+export interface FieldIssue {
+  field: string;
+  reason: string;
+  detail: string;
+}
+
+export interface AutoCorrection {
+  rule: string;
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface QuestionDetail {
+  id: string;
+  number: number;
+  label: string;
+  type: string | null;
+  points: number | null;
+  body: string[];
+  choices: { label: string; body: string[] }[];
+  equations: { id: string; latex: string | null }[];
+  figures: { id: string; labels: Record<string, string>; description?: string }[];
+  answer: unknown;
+  status: string;
+  confidence: number;
+  issues: FieldIssue[];
+  corrections: AutoCorrection[];
+  atus: {
+    id: string;
+    kind: string;
+    field: string | null;
+    status: string;
+    value: unknown;
+    candidates: { provider: string; value: unknown; confidence: number }[];
+  }[];
+  logic_flags: { kind: string; detail: string }[];
+  crop: string | null;
+  crop_clean: string | null;
+}
+
+export interface RestorationSummary {
+  restoration_status: string;
+  final_status: string;
+  counts: Record<string, number>;
+  review_questions: {
+    id: string;
+    number: number;
+    label: string;
+    status: string;
+    issues: FieldIssue[];
+    crop: string | null;
+  }[];
+}
+
+export async function getRestoration(
+  docId: string,
+): Promise<RestorationSummary> {
+  const res = await apiFetch(`/api/documents/${docId}/restoration`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function getQuestionDetail(
+  docId: string,
+  qid: string,
+): Promise<QuestionDetail> {
+  const res = await apiFetch(`/api/documents/${docId}/questions/${qid}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export interface QuestionEditResult {
+  ok: boolean;
+  recognized?: boolean;
+  explanation?: string;
+  needs_clarification?: boolean;
+  applied?: boolean;
+  ops?: { op: string; target: string; field?: string; value?: unknown }[];
+  preview?: { before: QuestionDetail; after: QuestionDetail };
+}
+
+export async function editQuestion(
+  docId: string,
+  qid: string,
+  instruction: string,
+  apply = false,
+): Promise<QuestionEditResult> {
+  const res = await apiFetch(`/api/documents/${docId}/questions/${qid}/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instruction, apply }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function confirmQuestion(
+  docId: string,
+  qid: string,
+): Promise<{ ok: boolean; status: string }> {
+  const res = await apiFetch(
+    `/api/documents/${docId}/questions/${qid}/confirm`,
+    { method: "POST" },
+  );
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export interface RestorationExportResult {
+  file: string;
+  url: string;
+  restoration_status: string;
+  counts: Record<string, number>;
+  final: boolean;
+}
+
+export async function exportRestoration(
+  docId: string,
+  format: string,
+): Promise<RestorationExportResult> {
+  const res = await apiFetch(
+    `/api/documents/${docId}/restoration/export`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format }),
+    },
+  );
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}

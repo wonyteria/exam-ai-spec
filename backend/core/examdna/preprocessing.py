@@ -8,7 +8,22 @@ from PIL import Image, ImageOps
 from document.models import Page, PageImage, PdfPageInventory, TransformStep
 from .context import PipelineContext
 
-_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".heic", ".heif"}
+_HEIC_REGISTERED = False
+
+
+def _register_heif() -> None:
+    """iPhone photos arrive as HEIC — register the decoder if installed."""
+    global _HEIC_REGISTERED
+    if _HEIC_REGISTERED:
+        return
+    _HEIC_REGISTERED = True
+    try:
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
 # RESTORE-15: which recognition task each derived candidate serves.
 # Consumers may route per-region; none replaces the immutable source.
 VARIANT_PURPOSES = {
@@ -23,6 +38,10 @@ VARIANT_PURPOSES = {
     "channel_b": ("layerdna",),
 }
 PDF_RENDER_SCALE = 200 / 72  # 200 dpi rasterization baseline
+# Working-resolution cap: phone photos arrive at 12MP+ where pixel-level
+# analysis is needlessly slow. Downscaling is recorded in the transform
+# chain so every coordinate stays invertible to source pixels.
+MAX_NORMALIZED_SIDE = 2600  # keeps 200-dpi A4 rasters intact (2339px)
 # A page with fewer glyphs than this has a text layer too thin to trust
 # (e.g. a watermark string on a scan) — treated as image-only for
 # recognition purposes but reported separately (RESTORE-01).
@@ -63,6 +82,8 @@ def run(ctx: PipelineContext) -> None:
 def _load_oriented(ctx: PipelineContext, page: Page, path: Path) -> Image.Image | None:
     """Load the original honoring EXIF orientation; record the transform so
     source anchors in original pixels stay invertible (02 SourceAnchor)."""
+    if path.suffix.lower() in (".heic", ".heif"):
+        _register_heif()
     try:
         with Image.open(path) as im:
             exif_orientation = None
@@ -76,6 +97,7 @@ def _load_oriented(ctx: PipelineContext, page: Page, path: Path) -> Image.Image 
         page.processing_error = f"image_decode_failed: {exc}"
         ctx.emit("preprocessing", f"{path.name}: 이미지 디코드 실패 — {exc}", "warn")
         return None
+    base = _cap_resolution(ctx, page, base)
     page.width, page.height = base.size
     if exif_orientation and exif_orientation != 1:
         swapped = exif_orientation in _EXIF_SWAP
@@ -95,6 +117,39 @@ def _load_oriented(ctx: PipelineContext, page: Page, path: Path) -> Image.Image 
             f"{path.name}: EXIF 회전 {exif_orientation} 적용",
         )
     return base
+
+
+def _cap_resolution(
+    ctx: PipelineContext, page: Page, base: Image.Image
+) -> Image.Image:
+    """Downscale oversized sources to the working resolution. Recorded as
+    a transform step — source pixels stay recoverable via the scale."""
+    w, h = base.size
+    side = max(w, h)
+    if side <= MAX_NORMALIZED_SIDE:
+        return base
+    scale = MAX_NORMALIZED_SIDE / side
+    capped = base.resize(
+        (max(1, round(w * scale)), max(1, round(h * scale))),
+        Image.LANCZOS,
+    )
+    page.transform_chain.append(
+        TransformStep(
+            kind="normalize_scale",
+            params={
+                "scale": round(scale, 6),
+                "from_width": w,
+                "from_height": h,
+                "to_width": capped.size[0],
+                "to_height": capped.size[1],
+            },
+        )
+    )
+    ctx.emit(
+        "preprocessing",
+        f"페이지 {page.index + 1}: {w}×{h} → {capped.size[0]}×{capped.size[1]} 정규화",
+    )
+    return capped
 
 
 def _rasterize_pdf_page(ctx: PipelineContext, page: Page, path: Path) -> None:
@@ -139,6 +194,7 @@ def _rasterize_pdf_page(ctx: PipelineContext, page: Page, path: Path) -> None:
         }.get(cls, "분류 불명")
         ctx.emit("preprocessing", f"{path.name} p{idx}: {cls} — {detail}")
 
+    base = _cap_resolution(ctx, page, base)
     page.width, page.height = base.size
     page.transform = {
         "kind": "pdf_raster",
@@ -351,6 +407,11 @@ def _cv_variants(
         import cv2
         import numpy as np
     except ImportError:
+        if page is not None:
+            page.processing_error = (
+                (page.processing_error + ";" if page.processing_error else "")
+                + "opencv_missing"
+            )
         return variants
 
     gray_np = np.asarray(gray, dtype=np.uint8)

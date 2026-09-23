@@ -42,6 +42,22 @@ MIN_INTERVAL = float(os.environ.get("LOCAL_LLM_MIN_INTERVAL", "0.0"))
 _rate_lock = threading.Lock()
 _last_call = 0.0
 
+# Bounded concurrency for in-flight local calls — callers that
+# parallelize questions share one semaphore (LOCAL_LLM_CONCURRENCY).
+_concurrency_lock = threading.Lock()
+_sem: threading.Semaphore | None = None
+
+
+def _semaphore() -> threading.Semaphore:
+    global _sem
+    if _sem is None:
+        with _concurrency_lock:
+            if _sem is None:
+                _sem = threading.Semaphore(
+                    int(os.environ.get("LOCAL_LLM_CONCURRENCY", "4"))
+                )
+    return _sem
+
 CACHE_DIR = Path(
     os.environ.get(
         "LOCAL_LLM_CACHE_DIR",
@@ -97,6 +113,7 @@ class LocalLLMProvider:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
         client: Any = None,
+        name: Optional[str] = None,
     ):
         if client is not None:
             self._client = client
@@ -111,6 +128,12 @@ class LocalLLMProvider:
                 max_retries=0,
             )
         self.model = model or os.environ.get("LOCAL_LLM_MODEL", "qwen3:32b")
+        # Secondary slots carry the model in the provider name so source
+        # independence is keyed on model identity: two slots pointing at
+        # the same model collapse to one evidence source, and a cached
+        # reply can never masquerade as an independent agreement.
+        if name:
+            self.name = name
 
     # -- roles ---------------------------------------------------------------
 
@@ -118,9 +141,14 @@ class LocalLLMProvider:
         """Same contract as the Gemini solver: chunked calls (10 at a time —
         large batches overflow local output budgets too), one Candidate with
         the per-question result list."""
+        # Local models generate at ~7tok/s — a 10-question batch with full
+        # solutions exceeds the client timeout. LOCAL_LLM_SOLVE_CHUNK lets
+        # operators trade latency for smaller calls; each call is its own
+        # evidence unit either way.
+        chunk_size = int(os.environ.get("LOCAL_LLM_SOLVE_CHUNK", "10"))
         out: list[Any] = []
-        for i in range(0, len(problems), 10):
-            chunk = problems[i : i + 10]
+        for i in range(0, len(problems), chunk_size):
+            chunk = problems[i : i + chunk_size]
             prompt = (
                 _SOLVE_BATCH_PROMPT
                 + "\n\n문제들:\n"
@@ -130,7 +158,10 @@ class LocalLLMProvider:
                 prompt += f"\n\n(독립 검증 {run + 1}회차)"
             try:
                 data = self._generate_json(prompt)
-            except json.JSONDecodeError:
+            except Exception:  # noqa: BLE001
+                # A failed chunk (timeout, malformed JSON) must not sink
+                # the whole batch — its questions simply stay unanswered,
+                # which the downstream checks report honestly.
                 data = None
             if isinstance(data, list):
                 out.extend(data)
@@ -181,7 +212,11 @@ class LocalLLMProvider:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
         }
-        if json_mode:
+        # Some servers (llama.cpp/Ollama) reject response_format with 501
+        # only AFTER generating the whole reply — learning that once and
+        # skipping the flag thereafter avoids paying a full generation
+        # per call just to be refused.
+        if json_mode and not getattr(self, "_json_mode_unsupported", False):
             kwargs["response_format"] = {"type": "json_object"}
         if os.environ.get("LOCAL_LLM_DISABLE_THINKING") == "1":
             # Ollama qwen3/qwq accept `"think": false`; ignored elsewhere
@@ -191,13 +226,23 @@ class LocalLLMProvider:
         for attempt in range(MAX_RETRIES):
             _pace()
             try:
-                resp = self._client.chat.completions.create(**kwargs)
+                with _semaphore():
+                    resp = self._client.chat.completions.create(**kwargs)
                 text = resp.choices[0].message.content or ""
                 _cache_put(key, text)
                 return text
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 status = getattr(exc, "status_code", None)
+                if "response_format" in kwargs and (status == 501 or status is None):
+                    # Structured output unsupported or hung: some servers
+                    # return 501, others (llama.cpp builds) never reply to
+                    # a response_format request at all — the timeout path
+                    # needs the same remedy, not another doomed retry.
+                    # Plain-text fallback; _parse_json salvages the JSON.
+                    self._json_mode_unsupported = True
+                    kwargs.pop("response_format")
+                    continue
                 transient = status in (408, 409, 429, 500, 502, 503, 504) or (
                     status is None  # connection refused / reset / timeout
                 )

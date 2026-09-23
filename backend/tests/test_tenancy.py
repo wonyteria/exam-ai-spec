@@ -208,15 +208,21 @@ def test_teacher_can_edit_and_export(client):
     code = inv.json()["code"]
     client.post(f"/api/invites/{code}/accept", headers=_h("dave"))
 
+    # A teacher may have the export action, but an unverified restoration is
+    # still a draft and must not become a downloadable exam.
     res = client.post(
         f"/api/documents/{doc_id}/exports",
         json={"format": "hwpx"},
         headers=_h("dave"),
     )
-    assert res.status_code == 200, res.text
-    # and the generated file downloads for a teacher
-    res = client.get(f"/api/documents/{doc_id}/files/exam.hwpx", headers=_h("dave"))
-    assert res.status_code == 200
+    assert res.status_code == 422, res.text
+    assert (
+        client.get(
+            f"/api/documents/{doc_id}/files/exam.hwpx", headers=_h("dave")
+        ).status_code
+        == 422
+    )
+
 
 
 def test_audit_log_written(client):

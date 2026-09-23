@@ -118,44 +118,87 @@ def _conflict_note(by_value: dict[str, set[str]]) -> str:
 
 
 def _materialize(document: Document) -> None:
-    """Populate question fields from verified ATUs only.
+    """Populate final fields and an inspectable draft from ATU candidates.
+
+    Verified ATUs populate final fields. A single-source, non-conflicting
+    candidate may also populate a *draft* field so a reviewer can inspect the
+    restoration before confirmation. Draft content never changes ATU status,
+    so it cannot make ZERO TYPO GATE pass.
 
     `number` stays the stable positional index; the extracted printed
     number/label (e.g. "13", "논술형 2", "2-1") goes to `label`.
     """
     verified = {VerificationStatus.AUTO_VERIFIED, VerificationStatus.HUMAN_VERIFIED}
     for q in document.questions:
+        draft_body: list[TextSpan] = []
+        draft_choices: dict[str, str] = {}
         choices: dict[str, str] = {}
         for atu in q.atus:
-            if atu.status not in verified or atu.field is None:
+            if atu.field is None:
                 continue
+            is_verified = atu.status in verified
+            source_atu = atu if is_verified else _safe_draft_atu(atu)
+            if source_atu is None:
+                continue
+            value = (
+                atu.value
+                if is_verified and atu.value is not None
+                else source_atu.candidates[0].value
+            )
             if atu.field == "number":
-                extracted = str(atu.value)
-                if not q.label or (q.label.isdigit() and not extracted.isdigit()):
-                    q.label = extracted
+                if is_verified:
+                    extracted = str(value)
+                    if not q.label or (q.label.isdigit() and not extracted.isdigit()):
+                        q.label = extracted
             elif atu.field == "body":
-                q.body.append(TextSpan(text=str(atu.value), atu_ids=[atu.id]))
+                span = TextSpan(text=str(value), atu_ids=[atu.id])
+                if is_verified:
+                    q.body.append(span)
+                else:
+                    draft_body.append(span)
             elif atu.field == "figure":
-                q.figures.append(_materialize_figure(atu, q))
+                if is_verified:
+                    q.figures.append(_materialize_figure(atu, q))
             elif atu.field == "points":
                 try:
-                    q.points = int(atu.value)
+                    q.points = int(value)
                 except (TypeError, ValueError):
                     pass
             elif atu.field == "type":
                 try:
-                    q.type = type(q.type)(atu.value)
+                    q.type = type(q.type)(value)
                 except ValueError:
                     pass
             elif atu.field.startswith("choice:"):
-                choices[atu.field.split(":", 1)[1]] = str(atu.value)
+                target = choices if is_verified else draft_choices
+                target[atu.field.split(":", 1)[1]] = str(value)
             elif atu.field.startswith("equation:"):
-                q.equations.append(Equation(latex=str(atu.value), source=atu.source))
+                if is_verified:
+                    q.equations.append(Equation(latex=str(value), source=atu.source))
+        if not q.body and draft_body:
+            q.body = draft_body
+        if not choices and draft_choices:
+            choices = draft_choices
         q.choices = [
             Choice(label=label, body=[TextSpan(text=text)]) for label, text in choices.items()
         ]
     _sort_questions(document)
     _link_subquestions(document)
+
+
+def _safe_draft_atu(atu: ATU) -> ATU | None:
+    """Use an unverified ATU in a draft only when all readings agree."""
+    if atu.status != VerificationStatus.UNVERIFIED or not atu.candidates:
+        return None
+    # Keep weak/low-confidence readings in the review package without
+    # presenting them as usable draft text. Strong local-VLM page candidates
+    # are emitted at >=0.7; the threshold also preserves the existing
+    # low-confidence OCR contract.
+    if max((candidate.confidence for candidate in atu.candidates), default=0.0) < 0.7:
+        return None
+    if len({repr(candidate.value) for candidate in atu.candidates}) != 1:
+        return None
+    return atu
 
 
 def _materialize_figure(atu: ATU, q: Question) -> Figure:

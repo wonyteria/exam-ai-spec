@@ -307,10 +307,20 @@ test("wp09 full journey with contract assertions", async ({ page }) => {
     .click();
   const downloadLink = page.getByRole("link", { name: "PDF 초안 (DRAFT) 다운로드" });
   await expect(downloadLink).toBeVisible();
-  const downloadPromise = page.waitForEvent("download");
-  await downloadLink.click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toContain("exam.pdf");
+  // Same-origin <a download> clicks go through Chromium's download
+  // pipeline, which does not traverse page.route mocks — assert the
+  // link contract (href + download attr) and verify the endpoint via
+  // in-page fetch, which IS routed.
+  await expect(downloadLink).toHaveAttribute(
+    "href",
+    /\/api\/v1\/artifacts\/art_1\/download\?purpose=draft/,
+  );
+  const dlHeaders = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/artifacts/art_1/download?purpose=draft");
+    return { status: r.status, cd: r.headers.get("content-disposition") };
+  });
+  expect(dlHeaders.status).toBe(200);
+  expect(dlHeaders.cd).toContain("exam.pdf");
 
   expect(hits).toContain("POST /api/uploads");
   expect(hits).toContain("POST /api/documents/doc_1/review-items/atu_1");

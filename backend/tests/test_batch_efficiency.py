@@ -87,7 +87,9 @@ def test_batch_solve_consensus(store, tmp_path):
     qs = [_mc_question(1), _mc_question(2)]
     solving.run(_ctx(store, qs, solver, tmp_path))
 
-    assert solver.calls == 2  # two consensus runs, not 2 per question
+    # Phase 1: bounded per-context-group calls — each singleton group is
+    # one solve unit, run twice for consensus (2 groups × 2 runs).
+    assert solver.calls == 4
     assert [q.answer.value for q in qs] == ["②", "③"]
     assert all(not q.verification.logic_flags for q in qs)
 

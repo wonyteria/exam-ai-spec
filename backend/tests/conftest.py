@@ -15,8 +15,14 @@ from jobs.store import Store
 
 @pytest.fixture(autouse=True)
 def no_real_providers(monkeypatch):
-    """Tests never call real AI providers."""
+    """Tests never call real AI providers — every cloud/local adapter
+    factory is stubbed so ambient env keys (OPENAI_API_KEY etc.) can't
+    leak a real client into a test run."""
     monkeypatch.setattr(runner, "_gemini_provider", lambda: None)
+    monkeypatch.setattr(runner, "_openai_provider", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_local_provider", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_local_vision_provider", lambda: None)
+    monkeypatch.setenv("EXAMDNA_ENABLE_LOCAL_PAGE_RESTORE", "0")
 
 
 @pytest.fixture()

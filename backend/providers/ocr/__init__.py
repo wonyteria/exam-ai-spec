@@ -26,4 +26,8 @@ def get_providers() -> list:
         from .easyocr_adapter import EasyOCRProvider
 
         providers.append(EasyOCRProvider())
+    if os.environ.get("EXAMDNA_TESSERACT") == "1":
+        from .tesseract import TesseractOCRProvider
+
+        providers.append(TesseractOCRProvider())
     return providers

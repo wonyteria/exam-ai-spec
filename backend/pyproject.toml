@@ -9,15 +9,20 @@ dependencies = [
     "pydantic",
     "python-multipart",
     "pillow",
+    "pillow-heif>=1.0",
     "numpy",
     "pypdfium2",
+    "sympy>=1.12",
+    "opencv-python-headless>=4.8",
     "openai>=1.0",
+    "python-docx>=1.1",
     "google-genai",
     "python-dotenv",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
+ocr = ["paddleocr>=2.7", "paddlepaddle>=2.6", "easyocr>=1.7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

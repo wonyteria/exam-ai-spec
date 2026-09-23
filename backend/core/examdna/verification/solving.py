@@ -1,22 +1,34 @@
 from __future__ import annotations
 
-from document.models import Answer, LogicFlag, Solution, TextSpan
+from document.models import Answer, LogicFlag, Solution, TextSpan, VerificationStatus
 from ..context import PipelineContext
+from ..context_groups import build_context_groups, run_units
 from ..math.checker import MathVerdict, verify_answer
 
 
 def run(ctx: PipelineContext) -> None:
     """Solve each question to prove the restored problem is well-formed.
 
-    Batched: all problems go to solve_batch in two consensus runs; questions
-    absent from the batch response fall back to per-question solves. Answers
-    must agree or the question is flagged ambiguous_answer.
+    Bounded per-context-group work (Phase 1): each shared-stem/singleton
+    group is an isolated solve unit — one group failure or timeout is
+    recorded as a failed unit, never a whole-stage crash. Two consensus
+    runs per question; answers must agree or the question is flagged
+    ambiguous_answer. Questions absent from the response fall back to
+    per-question solves.
     """
     stem_ids = {q.parent_id for q in ctx.document.questions if q.parent_id}
     targets = [
         q
         for q in ctx.document.questions
-        if q.id not in stem_ids and (q.body or q.equations or q.figures)
+        if q.id not in stem_ids
+        and (q.body or q.equations or q.figures)
+        # Draft OCR is for human inspection, not for downstream mathematical
+        # proof. Wait until at least one ATU is verified; otherwise a long
+        # solver call would consume time on text that is still untrusted.
+        and (
+            not q.atus
+            or any(a.status in (VerificationStatus.AUTO_VERIFIED, VerificationStatus.HUMAN_VERIFIED) for a in q.atus)
+        )
     ]
     problems = {q.id: _problem(q, ctx.document) for q in targets}
 
@@ -25,15 +37,47 @@ def run(ctx: PipelineContext) -> None:
     if not problems:
         ctx.emit("solving", "풀이 대상 문항 없음 — 검증된 내용이 없어 건너뜀", "warn")
         return
+
+    # Context groups = units of isolation: a shared stem (multipart,
+    # table, graph, cross-page) is one unit; ordinary questions are
+    # singletons. One unit failing leaves the rest of the exam intact.
+    groups = [
+        g
+        for g in build_context_groups(ctx.document)
+        if any(qid in problems for qid in g.question_ids)
+    ]
+    unit_failures = 0
     for run_i in range(2):
         results: dict[str, dict] = {}
         for solver in ctx.providers.solver:
-            if hasattr(solver, "solve_batch"):
-                for cand in _solve_batch(solver, list(problems.values()), run_i):
+            if not hasattr(solver, "solve_batch"):
+                continue
+
+            def _unit(group, _solver=solver, _run=run_i):
+                group_problems = [
+                    problems[qid]
+                    for qid in group.question_ids
+                    if qid in problems
+                ]
+                return _solve_batch(_solver, group_problems, _run)
+
+            for unit in run_units(groups, _unit):
+                if unit.status != "SUCCEEDED" or unit.result is None:
+                    unit_failures += 1
+                    continue
+                for cand in unit.result:
                     for item in cand.value if isinstance(cand.value, list) else []:
                         if isinstance(item, dict):
                             results.setdefault(_result_key(item, problems), item)
         runs.append(results)
+    ctx.metric("solving", "context_groups", len(groups))
+    ctx.metric("solving", "unit_failures", unit_failures)
+    if unit_failures:
+        ctx.emit(
+            "solving",
+            f"{unit_failures}개 문항 단위 실패 — 나머지 문항은 계속 진행",
+            "warn",
+        )
 
     # per-question fallback for anything the batch didn't cover
     answered = {k for r in runs for k in r}

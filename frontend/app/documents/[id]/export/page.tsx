@@ -9,8 +9,11 @@ import {
   createArtifact,
   Eligibility,
   exportFinal,
+  exportRestoration,
   getDocument,
   getEligibility,
+  getRestoration,
+  RestorationSummary,
   runChecks,
 } from "@/lib/api";
 import Chrome from "@/components/Chrome";
@@ -33,9 +36,10 @@ const GATE_LABEL: Record<string, string> = {
 
 const GATE_ORDER = Object.keys(GATE_LABEL);
 
-const FORMATS = ["hwpx", "pdf", "hwp"] as const;
+const FORMATS = ["hwpx", "docx", "pdf", "hwp"] as const;
 const FORMAT_LABEL: Record<string, string> = {
   hwpx: "HWPX (편집 가능)",
+  docx: "DOCX (워드)",
   pdf: "PDF",
   hwp: "HWP 5.0 (한컴 필요)",
 };
@@ -76,6 +80,14 @@ const DOC_STATUS_LABEL: Record<string, string> = {
   UNREADABLE: "판독 불가",
 };
 
+const RESTO_STATUS_LABEL: Record<string, string> = {
+  RESTORED_BEST_EFFORT: "최선 복원 완료",
+  NEEDS_USER_REVIEW: "검토 필요 문항 있음",
+  READY_FOR_FINAL_EXPORT: "최종 export 준비됨",
+};
+
+const RESTO_FORMATS = ["json", "hwpx", "docx", "pdf"] as const;
+
 export default function ExportPage() {
   const { id } = useParams<{ id: string }>();
   const [gate, setGate] = useState<Record<string, unknown> | null>(null);
@@ -87,6 +99,8 @@ export default function ExportPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [mode, setMode] = useState("STUDENT_WITH_ENDNOTES");
+  const [resto, setResto] = useState<RestorationSummary | null>(null);
+  const [restoMsg, setRestoMsg] = useState<string | null>(null);
 
   const loadEligibility = useCallback(async () => {
     const tenant = activeTenant();
@@ -115,6 +129,9 @@ export default function ExportPage() {
         setGate(g);
         setMissing(Array.isArray(g?.missing_numbers) ? g.missing_numbers : []);
         setStatus(doc.verification?.status ?? "");
+        getRestoration(id)
+          .then((r) => { if (!cancelled) setResto(r); })
+          .catch(() => { if (!cancelled) setResto(null); });
       } catch (e) {
         if (!cancelled) setError(String(e));
       }
@@ -225,6 +242,27 @@ export default function ExportPage() {
     }
   };
 
+  const doRestoExport = async (fmt: string) => {
+    if (busy) return;
+    setBusy(`resto-${fmt}`);
+    setError(null);
+    setRestoMsg(null);
+    try {
+      const out = await exportRestoration(id, fmt);
+      setRestoMsg(
+        `${fmt.toUpperCase()} 복원본 생성 — 검토 필요 ${out.counts?.NEEDS_USER_REVIEW ?? 0}문항`,
+      );
+      setResult({
+        label: `${fmt.toUpperCase()} 복원본 (best-effort)`,
+        url: `${process.env.NEXT_PUBLIC_API_URL ?? ""}${out.url}`,
+      });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const ready = elig?.content_ready ?? false;
 
   return (
@@ -244,6 +282,55 @@ export default function ExportPage() {
           )}
         </p>
       </header>
+
+      {resto && (
+        <div className="glass mb-6 rounded-2xl p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">복원본 다운로드 (best-effort)</h2>
+            <span
+              className={`chip ${
+                resto.restoration_status === "READY_FOR_FINAL_EXPORT"
+                  ? "chip-green"
+                  : "chip-amber"
+              }`}
+            >
+              {RESTO_STATUS_LABEL[resto.restoration_status] ??
+                resto.restoration_status}
+            </span>
+          </div>
+          <p className="mb-3 text-sm text-white/60">
+            자동 복원 {resto.counts.AUTO_RESTORED ?? 0} · 자동 교정{" "}
+            {resto.counts.AUTO_CORRECTED ?? 0} · 검토 필요{" "}
+            {resto.counts.NEEDS_USER_REVIEW ?? 0} · 복원 불가{" "}
+            {resto.counts.BLOCKED ?? 0} / 전체 {resto.counts.total ?? 0}
+            {(resto.counts.NEEDS_USER_REVIEW ?? 0) > 0 && (
+              <>
+                {" "}—{" "}
+                <Link
+                  href={`/documents/${id}/review`}
+                  className="underline"
+                >
+                  검토 필요 문항 보기
+                </Link>
+              </>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {RESTO_FORMATS.map((fmt) => (
+              <button
+                key={fmt}
+                data-resto-format={fmt}
+                onClick={() => doRestoExport(fmt)}
+                disabled={busy !== null}
+                className="btn-ghost"
+              >
+                {busy === `resto-${fmt}` ? "생성 중…" : fmt.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          {restoMsg && <p className="mt-2 text-xs text-white/50">{restoMsg}</p>}
+        </div>
+      )}
 
       {eligError && (
         <p className="alert-red mb-4 p-3 text-sm">

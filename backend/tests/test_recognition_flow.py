@@ -82,7 +82,13 @@ def fake_providers(monkeypatch):
     monkeypatch.setattr(runner, "default_providers", lambda: providers)
 
 
-def test_recognition_to_verified_final(store, sample_png, fake_providers):
+def test_recognition_to_verified_final(store, sample_png, fake_providers, monkeypatch):
+    # The gate requires artifact_proof == PASS, which on CI/dev machines
+    # has no Windows Hancom worker. Mock the round-trip proof as clean so
+    # the gate logic itself is exercised cross-platform.
+    monkeypatch.setattr(
+        "core.examdna.export_verification.run_hwp_proof", lambda *a, **kw: 0
+    )
     doc = Document()
     store.save_document(doc)
     job = store.create_job(Job(document_id=doc.id))

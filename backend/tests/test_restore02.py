@@ -151,9 +151,9 @@ def test_mock_vision_drives_segmentation_and_recognition(tmp_path):
         providers=Providers(vision=[MockVisionProvider(items=items)]),
         event_sink=lambda *a: None,
     )
-    for _state, name, fn in pipeline.STAGES:
-        if name in ("segmentation", "recognition", "source_verification"):
-            fn(ctx)
+    for contract in pipeline.STAGES:
+        if contract.name in ("segmentation", "recognition", "source_verification"):
+            contract.fn(ctx)
 
     assert len(doc.questions) == 1
     q = doc.questions[0]

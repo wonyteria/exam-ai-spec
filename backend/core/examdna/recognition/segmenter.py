@@ -31,7 +31,9 @@ def run(ctx: PipelineContext) -> None:
         for provider in ctx.providers.vision:
             for cand in _region_candidates(provider, image, page.index, ctx):
                 position = len(questions) + len(page_questions) + 1
-                label = str(cand.get("label") or cand.get("number") or position)
+                label = normalize_label(
+                    str(cand.get("label") or cand.get("number") or position)
+                )
                 if label in seen_labels:
                     # A second provider reporting the same region is
                     # corroborating evidence (its fields merge via
@@ -67,6 +69,27 @@ def run(ctx: PipelineContext) -> None:
         f"{len(questions)}개 문항 영역 분리",
         "info" if questions else "warn",
     )
+
+
+import re
+
+_LABEL_WS = re.compile(r"\s+")
+_LABEL_SUB = re.compile(r"^(\d{1,2})\s*-\s*(\d{1,2})$")
+_LABEL_DESC = re.compile(r"^논술형?\s*(\d{1,2})$")
+
+
+def normalize_label(label: str) -> str:
+    """Canonical question label across engines: whitespace collapsed,
+    '논술2'/'논술형2'/'논술형 2' → '논술형 2', '2 - 1' → '2-1'.
+    Ambiguous '?'-labels pass through untouched."""
+    s = _LABEL_WS.sub(" ", (label or "").strip())
+    m = _LABEL_DESC.match(s)
+    if m:
+        return f"논술형 {m.group(1)}"
+    m = _LABEL_SUB.match(s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    return s
 
 
 def _anchor(page, bbox):
@@ -137,26 +160,40 @@ def _classify_regions(ctx, page, questions) -> None:
         page.regions = [r.model_dump() for r in regions]
         # FigureDNA: extract candidate scenes inside question bodies —
         # the scene is a candidate for semantic checks, never a verdict.
-        for q in questions:
-            bbox = getattr(getattr(q, "source", None), "bbox", None)
-            if bbox is None:
-                continue
-            sub = gray[
-                int(bbox.y) : int(bbox.y + bbox.h),
-                int(bbox.x) : int(bbox.x + bbox.w),
-            ]
-            if sub.size == 0:
-                continue
-            payload = _extract_figure_scene(sub)
-            if payload is not None:
-                payload["question_id"] = q.id
-                page.regions.append(payload)
+        try:
+            import cv2  # noqa: F401 — figure extraction dependency
+        except ImportError:
+            ctx.emit(
+                "segmentation",
+                f"페이지 {page.index + 1}: OpenCV 미설치 — 도형 장면 추출 비활성",
+                "warn",
+            )
+        else:
+            for q in questions:
+                _attach_figure_scene(page, q, gray)
     except Exception as exc:  # noqa: BLE001
         ctx.emit(
             "segmentation",
             f"페이지 {page.index + 1}: 영역 분류 실패 — {exc}",
             "warn",
         )
+
+
+def _attach_figure_scene(page, q, gray) -> None:
+    """Extract and attach a candidate FigureScene for one question."""
+    bbox = getattr(getattr(q, "source", None), "bbox", None)
+    if bbox is None:
+        return
+    sub = gray[
+        int(bbox.y) : int(bbox.y + bbox.h),
+        int(bbox.x) : int(bbox.x + bbox.w),
+    ]
+    if sub.size == 0:
+        return
+    payload = _extract_figure_scene(sub)
+    if payload is not None:
+        payload["question_id"] = q.id
+        page.regions.append(payload)
 
 
 def _extract_figure_scene(sub) -> Optional[dict]:

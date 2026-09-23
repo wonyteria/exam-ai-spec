@@ -113,7 +113,7 @@ def _segments(ink: np.ndarray) -> list[tuple[int, int, int, int]]:
     if lines is None:
         return []
     out = []
-    for ln in lines[:, 0, :]:
+    for ln in np.asarray(lines).reshape(-1, 4):
         x1, y1, x2, y2 = (int(v) for v in ln)
         if np.hypot(x2 - x1, y2 - y1) >= _MIN_SEG_LEN:
             out.append((x1, y1, x2, y2))

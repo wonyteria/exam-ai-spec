@@ -50,6 +50,18 @@ ARTIFACT_CHECKS_BY_FORMAT_V1 = {
         "OUTPUT_MODE_CONTENT_POLICY",
         "ARTIFACT_HASH_BINDING",
     ],
+    # DOCX: same bar as PDF — a docx with no rendered visual proof stays
+    # NOT_RUN and can never reach FINAL_ELIGIBLE. The visual checks pass
+    # only when the docx was actually rendered (docx->pdf via an external
+    # renderer) and the rendered bytes verified — never inferred.
+    "docx": [
+        "FORMAT_OPEN_VALIDITY",
+        "ARTIFACT_SEMANTIC_COVERAGE",
+        "RENDERED_TEXT_VISUAL_MATCH",
+        "LAYOUT_STYLE_BOUNDS",
+        "OUTPUT_MODE_CONTENT_POLICY",
+        "ARTIFACT_HASH_BINDING",
+    ],
 }
 
 

@@ -50,6 +50,12 @@ def _sniff_mime(data: bytes, filename: str) -> str:
         return "image/bmp"
     if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return "image/webp"
+    # HEIC/HEIF (iPhone photos): ISO-BMFF box `ftyp` + HEIF brand family.
+    if data[4:8] == b"ftyp" and data[8:12] in (
+        b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx",
+        b"mif1", b"msf1",
+    ):
+        return "image/heic"
     if data[:5] == b"%PDF-":
         return "application/pdf"
     raise HTTPException(
@@ -66,6 +72,12 @@ def _sniff_mime(data: bytes, filename: str) -> str:
 
 
 def _validate_image(data: bytes, filename: str) -> tuple[int, int]:
+    try:
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
     try:
         with Image.open(io.BytesIO(data)) as im:
             im.verify()

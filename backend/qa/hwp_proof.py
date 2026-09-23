@@ -185,6 +185,26 @@ def pdf_layout_ok(pdf_path: Path, tolerance_pt: float = 5.0) -> bool | None:
     return True
 
 
+# Math symbols that PDF text extractors (pdfium) report out of reading
+# order — LibreOffice draws them from a separate font/run, so extraction
+# appends them at the line end ("AD∥BC" extracts as "AD BC ∥"). The
+# glyphs ARE rendered; only the extraction order differs. The fallback
+# comparison strips them from both sides but still requires every
+# symbol char of the field to be present somewhere in the render, so a
+# dropped glyph still fails.
+_REORDER_SYMBOLS = frozenset("∥⊥∠△□○●×÷°≡≠≤≥±√∴∵∽≒⊙′″—–-·")
+
+
+def _field_in_render(field_norm: str, blob_norm: str) -> bool:
+    if field_norm in blob_norm:
+        return True
+    stripped_field = "".join(c for c in field_norm if c not in _REORDER_SYMBOLS)
+    stripped_blob = "".join(c for c in blob_norm if c not in _REORDER_SYMBOLS)
+    if stripped_field and stripped_field in stripped_blob:
+        return all(c in blob_norm for c in field_norm if c in _REORDER_SYMBOLS)
+    return False
+
+
 def _pdf_text_mismatches(pdf_path: Path, document) -> int:
     """Rendered-PDF text check — catches content lost between parse and
     render even when the XML itself is complete."""
@@ -200,6 +220,6 @@ def _pdf_text_mismatches(pdf_path: Path, document) -> int:
             miss += 1
         for c in q.choices:
             body = _norm(" ".join(s.text for s in c.body))
-            if body and body not in norm_blob:
+            if body and not _field_in_render(body, norm_blob):
                 miss += 1
     return miss

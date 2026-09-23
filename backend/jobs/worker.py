@@ -12,7 +12,7 @@ from canonical.store import (
     StaleWorkerError,
 )
 from canonical.models import JobV2State, RevisionMode
-from core.examdna import STAGES, PipelineContext
+from core.examdna import PipelineContext
 from core.examdna.context import Providers
 from document.models import VerificationStatus
 from jobs.models import Job
@@ -92,19 +92,37 @@ def _execute(
             objects=objects,
             event_sink=sink,
         )
-        for _state, stage_name, fn in STAGES:
+        from core.examdna.executor import run_stages
+
+        def _cancel_requested() -> bool:
             if cstore.is_cancel_requested(job.id):
                 cstore.finish_job(job.id, token, JobV2State.CANCELLED)
-                return
+                return True
+            return False
+
+        def _on_start(contract) -> None:
             cstore.commit_job_stage(
                 job.id,
                 token,
-                stage_name,
-                data={"message": f"단계 시작: {stage_name}", "level": "info"},
+                contract.name,
+                data={
+                    "message": f"단계 시작: {contract.name}",
+                    "level": "info",
+                },
                 event="stage.started",
             )
-            fn(ctx)
+
+        def _on_end(contract, record) -> None:
             store.save_document(ctx.document)
+
+        records = run_stages(
+            ctx,
+            on_stage_start=_on_start,
+            on_stage_end=_on_end,
+            should_cancel=_cancel_requested,
+        )
+        if any(r.status.value == "CANCELLED" for r in records):
+            return
 
         # Commit the restored document as a canonical RESTORE revision and
         # run the implemented validators. Unimplemented required checks stay

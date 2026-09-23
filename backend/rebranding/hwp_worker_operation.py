@@ -37,6 +37,12 @@ _HWP_KILL_GRACE_S = 4.0
 _COM_SPAWN_MARKERS = ("-embedding", "/embedding", "-automation", "/automation")
 
 
+def _on_windows() -> bool:
+    """Platform gate kept behind a seam so tests can exercise the sweep
+    logic with mocked inventories on any OS."""
+    return platform.system() == "Windows"
+
+
 def hwp_process_inventory() -> set[int]:
     """PID set of running Hwp.exe processes. Windows-only; empty elsewhere
     and empty when tasklist is unavailable (tests then treat COM paths as
@@ -174,7 +180,7 @@ def sweep_spawned_hwp(
         "spawned": [], "com_spawned": [], "own": [], "killed": [],
         "leak": 0, "leak_pids": [], "foreign_preserved": [], "unresolved": [],
     }
-    if platform.system() != "Windows":
+    if not _on_windows():
         return empty
     deadline = time.time() + grace_s
     spawned: set[int] = set()

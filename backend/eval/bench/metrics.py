@@ -25,7 +25,10 @@ _CRITICAL = re.compile(
 
 
 def norm_text(s: str) -> str:
-    return _WS.sub("", str(s))
+    # `〈…〉` is the gold extractor's equation wrapper — a representation
+    # artifact, not content, so it must not penalize char accuracy.
+    return _WS.sub(
+        "", str(s).replace("〈", "").replace("〉", "").replace("−", "-"))
 
 
 def char_exact(pred: str, gold: str) -> float:
@@ -89,8 +92,15 @@ def source_hallucination(pred_text: str, gold_text: str) -> int:
 
 
 def question_metrics(pred_q: dict, gold_q: dict) -> dict[str, Any]:
-    """Per-question comparison against an expected.json entry."""
-    body = char_exact(pred_q.get("body", ""), gold_q.get("body", ""))
+    """Per-question comparison against an expected.json entry.
+
+    Fields absent from the gold entry score as None (skipped), never 0 —
+    a partial gold (e.g. equations stripped by HWP text extraction) must
+    not silently read as a total failure."""
+    body = (
+        char_exact(pred_q.get("body", ""), gold_q["body"])
+        if "body" in gold_q else None
+    )
     gold_choices = gold_q.get("choices", {})
     pred_choices = pred_q.get("choices", {})
     if isinstance(pred_choices, list):
@@ -104,23 +114,49 @@ def question_metrics(pred_q: dict, gold_q: dict) -> dict[str, Any]:
     for label, gtext in gold_choices.items():
         ptext = pred_choices.get(label, "")
         choice_scores.append(char_exact(str(ptext), str(gtext)))
-    matched, total, extra = critical_token_exact(
-        pred_q.get("body", "") + " " + " ".join(map(str, pred_choices.values())),
-        gold_q.get("body", "") + " " + " ".join(map(str, gold_choices.values())),
+    gold_text = gold_q.get("body", "") + " " + " ".join(
+        map(str, gold_choices.values())
     )
+    if gold_text.strip():
+        matched, total, extra = critical_token_exact(
+            pred_q.get("body", "")
+            + " "
+            + " ".join(map(str, pred_choices.values())),
+            gold_text,
+        )
+    else:
+        matched = total = extra = 0
+    gold_fig = [str(v) for v in gold_q.get("figure_labels", [])]
+    if gold_fig:
+        pred_fig_text = norm_text(
+            " ".join(map(str, pred_q.get("figure_labels", [])))
+            + " "
+            + str(pred_q.get("figure_text", ""))
+        )
+        fig_hit = sum(
+            1 for v in gold_fig if norm_text(v) and norm_text(v) in pred_fig_text
+        )
+        figure_label_recall = fig_hit / len(gold_fig)
+    else:
+        figure_label_recall = None
     return {
         "number": gold_q.get("number"),
         "body_exact": body,
         "choice_exact": (
             sum(choice_scores) / len(choice_scores) if choice_scores else None
         ),
-        "points_match": pred_q.get("points") == gold_q.get("points"),
+        "points_match": (
+            pred_q.get("points") == gold_q["points"]
+            if "points" in gold_q else None
+        ),
         "critical_matched": matched,
         "critical_total": total,
         "critical_extra": extra,
         "hallucinated_tokens": extra,
+        "figure_label_recall": figure_label_recall,
         "answer_match": (
-            str(pred_q.get("answer") or "") == str(gold_q.get("answer") or "")
+            str(pred_q.get("answer") or "") == str(gold_q["answer"] or "")
+            if "answer" in gold_q else None
         ),
     }
 

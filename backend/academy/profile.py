@@ -25,6 +25,11 @@ EXAM_PROFILE_KINDS = {
 
 
 class AcademyProfile(BaseModel):
+    """Canonical academy profile — presentation/template preferences.
+
+    Content stays in Document; this profile binds only to render-time
+    style (brand, layout, output mode). Every field is optional/minimal
+    so a profile is valid with just a name."""
     academy_id: str
     academy_name: str
     logo_uri: Optional[str] = None
@@ -33,6 +38,16 @@ class AcademyProfile(BaseModel):
     subjects: list[str] = Field(default_factory=list)
     grades: list[str] = Field(default_factory=list)
     brand_id: Optional[str] = None
+    # Template surface (Phase-2 canonical schema)
+    fonts: dict[str, str] = Field(default_factory=dict)
+    colors: dict[str, str] = Field(default_factory=dict)
+    margins_pt: Optional[list[float]] = None   # [top, right, bottom, left]
+    header_text: Optional[str] = None
+    footer_text: Optional[str] = None
+    footer_page_number: bool = True
+    columns: int = 2
+    line_spacing: float = 1.0
+    output_mode: str = "STUDENT_WITH_ENDNOTES"
 
 
 class StyleDNA(BaseModel):

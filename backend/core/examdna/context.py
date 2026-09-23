@@ -23,6 +23,9 @@ class Providers:
     math_ocr: list[MathOCRProvider] = field(default_factory=list)
     reasoning: list[ReasoningProvider] = field(default_factory=list)
     solver: list[MathSolverProvider] = field(default_factory=list)
+    # TraceDetectorProvider list — region-level trace candidates for
+    # LayerDNA. Optional; empty keeps the heuristic-only path.
+    trace: list = field(default_factory=list)
 
 
 @dataclass
@@ -37,6 +40,17 @@ class PipelineContext:
     hwp_mismatch: int | None = None
     # Hash-bound artifact proof from export_verification (RESTORE-07).
     artifact_proof: Optional[dict] = None
+    # Per-stage measurable counters (removed_px, review regions, …) —
+    # flushed into worker_metrics.jsonl by run_pipeline, never an event.
+    stage_metrics: dict[str, dict] = field(default_factory=dict)
+    # Phase 1 contracts: capability preflight report (set by the
+    # capability_preflight stage) and the fail-closed latch — any
+    # BLOCKED stage pins the job to NEEDS_REVIEW at best.
+    capabilities: Optional[object] = None  # preflight.CapabilityReport
+    stage_blocked: bool = False
+
+    def metric(self, stage: str, key: str, value) -> None:
+        self.stage_metrics.setdefault(stage, {})[key] = value
 
     def emit(self, stage: str, message: str, level: str = "info") -> None:
         # WP10: secrets/paths/emails never reach stored job events.
